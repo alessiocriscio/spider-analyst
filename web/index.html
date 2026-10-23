@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spider Analyst</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='18' r='8' fill='black' stroke='%23ff2e88' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<!-- Home: choose what the spider reads -->
+<section id="home" class="screen">
+  <div class="home-inner">
+    <canvas id="hero-spider" width="220" height="150" aria-hidden="true"></canvas>
+    <h1>Spider Analyst</h1>
+    <p class="lead">Un ragno legge un documento finanziario, cifra per cifra, e scrive il report mentre cammina.</p>
+
+    <form id="search-form" autocomplete="off">
+      <label for="q" class="sr">Cerca uno strumento</label>
+      <input id="q" type="search" placeholder="Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, oro…" autofocus>
+      <button type="submit">Cerca</button>
+    </form>
+    <div id="results" aria-live="polite"></div>
+
+    <div class="alt">
+      <form id="url-form" autocomplete="off">
+        <label for="url">Oppure incolla l'indirizzo di un documento (PDF, HTML, iXBRL)</label>
+        <div class="row"><input id="url" type="url" placeholder="https://…/kid.pdf"><button type="submit">Leggi</button></div>
+      </form>
+      <div id="drop" tabindex="0" role="button" aria-label="Carica un file">
+        Trascina qui un PDF o un bilancio iXBRL, o <u>scegli un file</u>
+        <input id="file" type="file" accept=".pdf,.htm,.html,.xhtml,.xml" hidden>
+      </div>
+    </div>
+
+    <div class="opts">
+      <label><input id="opt-ai" type="checkbox"> Osservazioni scritte da Claude</label>
+      <label>Durata della lettura
+        <select id="opt-dur">
+          <option value="25">25 s</option><option value="40" selected>40 s</option>
+          <option value="60">60 s</option><option value="90">90 s</option><option value="150">2 min 30</option>
+        </select>
+      </label>
+      <button id="open-settings" type="button" class="link">Impostazioni</button>
+    </div>
+
+    <div id="recent"></div>
+  </div>
+</section>
+
+<!-- Loading -->
+<section id="loading" class="screen" hidden>
+  <div class="load-box">
+    <p id="load-step">Preparo il documento</p>
+    <div class="bar"><i id="load-bar"></i></div>
+    <p id="load-error" class="error" hidden></p>
+    <button id="load-back" type="button" hidden>Torna alla ricerca</button>
+  </div>
+</section>
+
+<!-- Reading -->
+<section id="reader" class="screen" hidden>
+  <header id="topbar">
+    <button id="back" type="button" title="Nuova analisi">‹ Nuova analisi</button>
+    <div class="ctrl">
+      <button id="play" type="button">Avvia</button>
+      <button id="restart" type="button">Ricomincia</button>
+      <select id="dur2" aria-label="Durata"></select>
+      <label class="tog"><input id="video-mode" type="checkbox"> Formato video 9:16</label>
+      <button id="record" type="button">Registra video</button>
+    </div>
+  </header>
+  <div id="frame">
+    <div id="stage">
+      <div id="doc-layer"><iframe id="doc" title="Documento" sandbox="allow-same-origin"></iframe></div>
+      <canvas id="marks"></canvas>
+      <canvas id="spider"></canvas>
+      <div id="finale" hidden></div>
+      <div id="rec-dot" hidden>REC</div>
+    </div>
+    <aside id="report">
+      <div class="r-head">
+        <h2 id="r-title"></h2>
+        <p id="r-sub"></p>
+        <p id="r-count"><b id="r-n">0</b> di <span id="r-m">0</span> cifre lette</p>
+      </div>
+      <div id="r-section">
+        <h3 id="r-sec-title"></h3>
+        <table id="r-table"><thead></thead><tbody></tbody></table>
+      </div>
+      <div id="r-other">
+        <h3>Altre cifre lette dal ragno</h3>
+        <ul id="r-other-list"></ul>
+      </div>
+      <p id="r-warn"></p>
+    </aside>
+  </div>
+</section>
+
+<!-- Settings -->
+<dialog id="settings">
+  <form method="dialog" id="settings-form">
+    <h2>Impostazioni</h2>
+    <label>Identificazione per SEC EDGAR (User-Agent)
+      <input id="set-ua" type="text" placeholder="Nome Cognome nome@esempio.it">
+      <small>La SEC chiede a chi scarica i bilanci di indicare un nome e un contatto. Resta su questo Mac.</small>
+    </label>
+    <label>Chiave API Anthropic (facoltativa)
+      <input id="set-key" type="password" placeholder="sk-ant-…" autocomplete="off">
+      <small id="key-state"></small>
+    </label>
+    <p id="set-msg" class="error" hidden></p>
+    <div class="row end">
+      <button value="cancel" type="submit" class="link">Chiudi</button>
+      <button id="set-save" type="button">Salva</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -38,6 +38,7 @@ class Fact:
     display: str          # text exactly as printed
     decimals: Optional[str]
     page: int = 0
+    row_label: str = ""   # first text cell of the table row holding the figure
 
 
 @dataclass
@@ -300,6 +301,19 @@ def filter_css(css: str, used: set[str]) -> str:
     return "\n".join(out)
 
 
+def _row_label(el) -> str:
+    tr = next((a for a in el.iterancestors() if isinstance(a.tag, str) and a.tag.lower() == "tr"), None)
+    if tr is None:
+        return ""
+    for cell in tr:
+        if not isinstance(cell.tag, str):
+            continue
+        t = _text(cell)
+        if sum(c.isalpha() for c in t) >= 3:
+            return t[:120]
+    return ""
+
+
 def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
     root = _load_tree(data)
     contexts, units = _contexts_units(root)
@@ -367,6 +381,10 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
             el.tag = ln
     _sanitize(root, base_url)
     etree.cleanup_namespaces(root)
+
+    for el in root.iter():
+        if isinstance(el.tag, str) and el.get("data-f") is not None:
+            facts[int(el.get("data-f"))].row_label = _row_label(el)
 
     body = root.find(".//body")
     if body is None:

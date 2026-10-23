@@ -7,15 +7,17 @@ Requisito dell'utente: deve funzionare su **qualsiasi strumento finanziario** e 
 
 ## Stato
 
-- [x] `analyst/ixbrl.py` — parser inline XBRL: pagine, fatti taggati (valore + elemento esatto `data-f`), titoli (`data-h`), CSS filtrabile. Non ancora testato.
-- [ ] `analyst/sources.py` — SEC EDGAR, ESEF (filings.xbrl.org), Yahoo Finance, con cache su disco (`.data/`)
-- [ ] `analyst/financials.py` — metriche, rapporti, controlli, osservazioni
-- [ ] `analyst/market.py` — scheda di mercato generata (per crypto, indici, valute, materie prime, ETF)
-- [ ] `analyst/generic.py` — PDF / HTML / URL caricati (KID, prospetti, whitepaper, factsheet)
-- [ ] `analyst/ai.py` — Claude opzionale (osservazioni ed estrazione), sempre validato sul testo della pagina
-- [ ] `server.py` — FastAPI
-- [ ] `web/` — interfaccia, motore del ragno, report live, finale, modalità video 9:16, registrazione MP4
-- [ ] `Avvia Spider Analyst.command` — avvio con doppio clic su Mac (venv, dipendenze, apre il browser)
+- [x] `analyst/ixbrl.py` — parser iXBRL (pagine, fatti `data-f`, titoli `data-h`, etichetta di riga, CSS filtrato)
+- [x] `analyst/sources.py` — SEC EDGAR, ESEF, Yahoo Finance, cache su disco
+- [x] `analyst/financials.py` — metriche us-gaap/ifrs-full, periodi, derivati, controlli, osservazioni, scheda
+- [x] `analyst/market.py` — scheda di mercato generata
+- [x] `analyst/generic.py` — PDF (immagine + strato di parole) e HTML senza tag
+- [x] `analyst/ai.py` — Claude opzionale, solo cifre già lette, validazione numerica
+- [x] `analyst/pipeline.py` — formato unico per l'interfaccia, `view.html` sanificato
+- [x] `server.py`, `web/` — ragno IK su canvas, regia, report live, finale, 9:16, registrazione MP4
+- [x] `Avvia Spider Analyst.command`, `README.md`, test offline (`tests/`)
+- [ ] Prova con dati reali (MSFT 10-K, Ferrari ESEF, BTC-USD): la sessione cloud di sviluppo non raggiungeva
+      sec.gov / filings.xbrl.org / Yahoo (proxy 403). Da verificare sul Mac.
 
 ## Fonti dati (verificate)
 
