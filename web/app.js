@@ -12,7 +12,7 @@ const UI = {
     url_label: "Or paste the address of a document (PDF, HTML, iXBRL)", read_btn: "Read", drop_aria: "Upload a file",
     drop: "<b>Upload a document</b><br>Drop a PDF or HTML file here (statements, report, KID, in English or Italian) or <u>choose a file</u>",
     opt_ai: "Findings written by AI", opt_lang: "Report language", settings: "Settings", back_search: "Back to search",
-    new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download report (PDF)", making_pdf: "Creating the PDF…",
+    new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download report (PDF)",
     ua_label: "Identity for SEC EDGAR (User-Agent)", ua_ph: "Jane Doe jane@example.com",
     ua_help: "The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.",
     key_label: "API key (optional)", provider_label: "AI provider (optional)", model_label: "Model", close: "Close", save: "Save",
@@ -35,7 +35,7 @@ const UI = {
     url_label: "Oppure incolla l'indirizzo di un documento (PDF, HTML, iXBRL)", read_btn: "Leggi", drop_aria: "Carica un file",
     drop: "<b>Carica un documento</b><br>Trascina qui un PDF o HTML (bilancio, report, KID, in italiano o in inglese) o <u>scegli un file</u>",
     opt_ai: "Osservazioni scritte dall'AI", opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca",
-    new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica report (PDF)", making_pdf: "Creo il PDF…",
+    new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica report (PDF)",
     ua_label: "Identificazione per SEC EDGAR (User-Agent)", ua_ph: "Nome Cognome nome@esempio.it",
     ua_help: "La SEC chiede a chi scarica i bilanci di indicare un nome e un contatto. Resta su questo computer.",
     key_label: "Chiave API (facoltativa)", provider_label: "Fornitore AI (facoltativo)", model_label: "Modello", close: "Chiudi", save: "Salva",
@@ -197,7 +197,7 @@ async function follow(job) {
     $("#load-bar").style.width = Math.round(j.progress * 100) + "%";
     if (j.status === "done") return openAnalysis(j.analysis_id);
     if (j.status === "error") return loadingError(j.error);
-    await sleep(500);
+    await sleep(250);
   }
 }
 
@@ -270,7 +270,7 @@ const L = () => I18N[state.analysis?.lang] || I18N.it;
 
 // pacing: base seconds per stop, compressed for long documents, never by skipping figures
 const BASE = { fig: 0.28, key: 0.7, head: 0.45, walk: 0.034, minHop: 0.12, maxHop: 1.4 };
-const targetSeconds = (n) => Math.max(20, Math.min(120, 10 + n * 0.22));
+const targetSeconds = (n) => Math.max(12, Math.min(75, 8 + n * 0.12));   // every figure, quicker
 
 // neon highlight palette of the reference clips
 const FX_PAL = [
@@ -475,7 +475,7 @@ class Director {
     });
     const natural = legs.reduce((t, [p, q]) => t + p + q, 0);
     const figures = stops.filter((s) => s.type === "f").length;
-    const k = Math.max(0.12, Math.min(1, targetSeconds(figures) / natural));
+    const k = Math.max(0.06, Math.min(1, targetSeconds(figures) / natural));
     let t = 0;
     this.timeline = stops.map((s, i) => {
       const seg = { s, p: pts[i], t0: t, t1: t + legs[i][0] * k, t2: t + (legs[i][0] + legs[i][1]) * k };
@@ -485,8 +485,8 @@ class Director {
     this.start0 = { x: pts[0].x, y: pts[0].y - 160 * this.U };
     this.planned = new Set(stops.filter((x) => x.type === "f").map((x) => String(x.id)));
     this.total = t;
-    const mul = Math.min(2.6, 1 / Math.sqrt(k));
-    this.pace = { k, mul, cam: Math.min(10, 4 * mul), obs: Math.max(800, 1600 / mul) };
+    const mul = Math.min(3.5, 1 / Math.sqrt(k));
+    this.pace = { k, mul, cam: Math.min(10, 4 * mul), obs: Math.max(550, 1100 / mul) };
     this.spider.speed = mul;
   }
 
@@ -894,95 +894,12 @@ function cardHTML(a, count) {
 
 // ------------------------------------------------------------------ downloadable report
 
-const SPIDER_ICON = `<svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><g stroke="#3fd4f5" stroke-width="1.6" fill="none" stroke-linecap="round">
-<path d="M19 15 L10 9 L4 12"/><path d="M19 19 L8 17 L3 21"/><path d="M19 24 L8 27 L4 33"/><path d="M19 28 L11 35 L9 41"/>
-<path d="M25 15 L34 9 L40 12"/><path d="M25 19 L36 17 L41 21"/><path d="M25 24 L36 27 L40 33"/><path d="M25 28 L33 35 L35 41"/></g>
-<g fill="#ff2d8f"><circle cx="10" cy="9" r="1.5"/><circle cx="8" cy="17" r="1.5"/><circle cx="8" cy="27" r="1.5"/><circle cx="11" cy="35" r="1.5"/>
-<circle cx="34" cy="9" r="1.5"/><circle cx="36" cy="17" r="1.5"/><circle cx="36" cy="27" r="1.5"/><circle cx="33" cy="35" r="1.5"/></g>
-<rect x="18.5" y="12" width="7" height="20" rx="1.5" fill="#0b0d12" stroke="#3b6cff" stroke-width="1.5"/><circle cx="22" cy="35" r="2.2" fill="#4fe3ff"/></svg>`;
-
-// the report as a styled, self-contained page (printed to PDF by the server)
-function reportHTML(a) {
-  const T = L(), lang = a.lang || "en";
-  const cell = (fid) => fid === null || fid === undefined ? "" : esc(a.facts[fid]?.value_fmt ?? "");
-  const tables = a.pages.map((p) => {
-    const rows = a.rows[p.n] || [];
-    if (!rows.length) return "";
-    const cols = a.cols[p.n] || [T.value];
-    return `<section class="tbl"><h3>${esc(p.title)} <span class="pg">${T.p} ${p.n}</span></h3><table><tr><th>${esc(T.label)}</th>${cols.map((c) => `<th class="n">${esc(c)}</th>`).join("")}</tr>` +
-      rows.map((r) => `<tr><td>${esc(r.label)}</td>${r.cells.map((f) => `<td class="n">${cell(f)}</td>`).join("")}</tr>`).join("") + "</table></section>";
-  }).join("");
-  const inRows = new Set(Object.values(a.rows).flat().flatMap((r) => r.cells).filter((x) => x !== null).map(String));
-  const others = Object.entries(a.facts).filter(([id]) => !inRows.has(String(id)));
-  const otherHTML = others.length ? `<section class="tbl"><h3>${esc(T.other)}</h3><table>` + others.map(([, f]) =>
-    `<tr><td>${esc(f.label)}</td><td class="n">${esc(f.value_fmt)}</td><td class="n pg">${T.p} ${f.page}</td></tr>`).join("") + "</table></section>" : "";
-  const checks = (a.checks || []).map((c) => `<li class="${c.ok ? "ok" : "ko"}"><b>${c.ok ? "✓" : "✗"}</b> ${esc(c.name)} — ${esc(c.ok ? T.ok : T.ko)}${c.detail && !c.ok ? " (" + esc(c.detail) + ")" : ""}</li>`).join("");
-  const passed = (a.checks || []).filter((c) => c.ok).length;
-  const today = new Date().toLocaleDateString(T.locale, { day: "numeric", month: "long", year: "numeric" });
-  const tiles = (a.card || []).map((t) => `<div class="tile"><div class="l">${esc(lang === "en" && t.en ? t.en : t.it)}</div><div class="v">${esc(t.display)}</div>${t.yoy_display ? `<div class="${t.yoy_display.startsWith("+") ? "up" : "down"}">${esc(t.yoy_display)} ${esc(T.yoy)}</div>` : ""}<span class="pg">${fmtPages(t.pages)}</span></div>`).join("");
-  const source = /^https?:/.test(a.source || "") ? `<a href="${esc(a.source)}">${esc(a.source)}</a>` : esc(a.source || "");
-  const aiNote = a.ai ? T.foot_ai.replace("Claude", a.ai_provider || "AI") : T.foot_det;
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${esc(a.title)} — Spider Analyst</title><style>
-@page{size:A4;margin:14mm 14mm 16mm}
-*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
-body{font:12.5px/1.5 -apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#1d1c26;margin:0;background:#fff}
-.brand{display:flex;align-items:center;gap:8px;font:600 12px -apple-system,Helvetica,sans-serif;color:#6c6a7c;margin-bottom:14px}
-.brand span{color:#1d1c26}
-.card{border:2px solid #1d1c26;border-radius:10px;padding:20px 22px 16px;box-shadow:7px 7px 0 #ff2d8f;margin:0 7px 26px 0;break-inside:avoid}
-h1{font:700 28px/1.1 Charter,"Iowan Old Style",Georgia,serif;margin:0}
-.sub{color:#6c6a7c;margin:4px 0 0;font-size:12px}
-.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}
-.tile{border:1px solid #d6d4e0;border-radius:6px;padding:9px 11px}
-.l{font-size:11px;color:#6c6a7c}.v{font:700 20px/1.2 -apple-system,Helvetica,sans-serif;font-variant-numeric:tabular-nums;margin:2px 0}
-.up{color:#0f8a5f;font-weight:600;font-size:11.5px}.down{color:#c8323c;font-weight:600;font-size:11.5px}
-.pg{color:#ff2d8f;font-size:11px;font-weight:600;white-space:nowrap}
-.foot1{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #d6d4e0;margin-top:14px;padding-top:8px;color:#6c6a7c;font-size:11px}
-.foot1 b{color:#1d1c26}
-h2{font:700 18px Charter,"Iowan Old Style",Georgia,serif;margin:22px 0 8px;padding-bottom:4px;border-bottom:2px solid #1d1c26}
-h3{font:600 14px Charter,"Iowan Old Style",Georgia,serif;margin:16px 0 6px}
-ol,ul{margin:0;padding-left:1.3em}li{margin:0 0 6px;font:13.5px/1.45 Charter,"Iowan Old Style",Georgia,serif;break-inside:avoid}
-ul.checks{list-style:none;padding:0}ul.checks li{font:12.5px/1.45 -apple-system,Helvetica,sans-serif}
-li.ok b{color:#0f8a5f}li.ko b{color:#c8323c}
-table{border-collapse:collapse;width:100%;font-size:11.5px;font-variant-numeric:tabular-nums}
-tr{break-inside:avoid}td,th{border-bottom:1px solid #ecebf2;padding:4px 6px;text-align:left}
-th{color:#6c6a7c;font-weight:500}.n{text-align:right;white-space:nowrap}
-tr:nth-child(even) td{background:#fafafd}
-.tbl h3 .pg{margin-left:4px}
-.src{color:#6c6a7c;font-size:11px;margin-top:8px;word-break:break-all}.src a{color:#3b6cff}
-.end{color:#6c6a7c;font-size:10.5px;margin-top:24px;border-top:1px solid #d6d4e0;padding-top:8px}
-</style></head><body>
-<div class="brand">${SPIDER_ICON}<span>Spider Analyst</span> · ${esc(T.report)} · ${esc(today)}</div>
-<div class="card"><h1>${esc(a.title)}</h1><p class="sub">${esc(a.subtitle)}</p>
-<div class="tiles">${tiles}</div>
-<div class="foot1"><span><b>${Object.keys(a.facts).length}</b> ${esc(T.read)} · <b>${passed}</b> ${esc(T.checks)} ${(a.checks || []).length}</span><span>${esc(aiNote)}</span></div></div>
-<h2>${esc(T.obs)}</h2><ol>${(a.findings || []).map((f) => `<li>${esc(f.text)} <span class="pg">${fmtPages(f.pages)}</span></li>`).join("")}</ol>
-${checks ? `<h2>${esc(T.controls)}</h2><ul class="checks">${checks}</ul>` : ""}
-<h2>${esc(T.figures)} (${Object.keys(a.facts).length})</h2>${tables}${otherHTML}
-<p class="src">${esc(T.source)}: ${source}</p>
-<p class="end">${esc(T.made)} ${esc(today)}. ${esc(aiNote)}.</p>
-</body></html>`;
-}
-
-async function downloadReport(a) {
-  const html = reportHTML(a);
-  const name = `${(a.title || "report").normalize("NFD").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase()}-report-${a.lang || "en"}`;
-  const btn = $("#download"), label = btn.textContent;
-  btn.disabled = true; btn.textContent = tr("making_pdf");
-  try {
-    const r = await fetch("/api/pdf", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, name }) });
-    if (!r.ok) throw new Error(String(r.status));
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(await r.blob());
-    link.download = name + ".pdf";
-    document.body.append(link); link.click(); link.remove();
-    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
-  } catch {
-    // no Chromium executable for headless printing: the browser's own print dialog saves the same page as PDF
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 400); }
-  } finally {
-    btn.disabled = false; btn.textContent = label;
-  }
+// a plain link to the server-made PDF: the browser downloads it as a normal file
+function downloadReport(a) {
+  const link = document.createElement("a");
+  link.href = `/api/doc/${a.id}/report.pdf`;
+  link.download = "";
+  document.body.append(link); link.click(); link.remove();
 }
 
 // ------------------------------------------------------------------ hero spider (home)

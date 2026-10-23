@@ -15,7 +15,7 @@ financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-bas
 - [x] `analyst/generic.py` — PDF (page image + word layer) and plain HTML
 - [x] `analyst/ai.py` — optional AI pass (Anthropic SDK; OpenAI, Gemini, Mistral, xAI, DeepSeek, OpenRouter via
       OpenAI-compatible endpoints), limited to figures already read, numbers validated
-- [x] `analyst/pdfexport.py` — report PDF printed by the installed Chromium (headless), print-dialog fallback
+- [x] `analyst/pdfreport.py` — report PDF drawn with reportlab in the app's style (served at `/api/doc/{id}/report.pdf`)
 - [x] `analyst/i18n.py` — interface language (system) and report language (Italian / English)
 - [x] `analyst/pipeline.py` — one analysis format for the web app, sanitised `view.html`
 - [x] `server.py`, `web/` — spider animation, pacing, live report, finale, report download
@@ -57,7 +57,8 @@ Every figure cites its page; the occurrence highlighted is the one on the page w
 - Spider (canvas), modelled on the reference clips: narrow outlined body with a head dot, three-segment legs solved
   with FABRIK, alternating gait with at most four legs in the air, feet planted on words, trailing silk line,
   pink/cyan pings, neon highlights; body follows the itinerary with a damped spring.
-- Pacing: every figure on the shown pages is visited; the pace scales with their number (≈20 s to ≈2 min).
+- Pacing: every figure on the shown pages is visited; the pace scales with their number (≈12 s to ≈75 s).
+- Speed: PDF pages are chosen from plain text and only the chosen pages get word boxes and (JPEG) images.
 - Report panel: "N of M figures read", pages read, table of the section being read, other figures with page.
 - Finale: key findings one by one, then the card (4 tiles with YoY change and page, 3 findings, figures and checks).
 - Interface in English, Italian when the OS language is Italian (server-side detection: macOS AppleLanguages,

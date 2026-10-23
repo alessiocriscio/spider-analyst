@@ -105,7 +105,7 @@ def test_pdf(tmp_path):
     labels = {f["display"]: f["label"] for f in g["facts"]}
     assert labels["1,45%"] == "Spese correnti"
     assert labels["4"] == "Indicatore sintetico di rischio"
-    assert (tmp_path / "p1.png").exists()
+    assert (tmp_path / "p1.jpg").exists()
 
 
 def test_sec_user_agent_is_generic_by_default(monkeypatch):

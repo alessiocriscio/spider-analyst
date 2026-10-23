@@ -63,9 +63,8 @@ for XBRL filings. For other documents (KID, prospectus) it lists the main figure
   liquidity, leverage — deterministic calculations on the document's figures.
 - **Language**: Italian or English, chosen on the home page or while reading (the report is regenerated:
   findings, checks, labels, number formats — `$120B` / `$120 mld`).
-- **Download**: *Download report (PDF)* saves a PDF in the app's style (summary card, findings, checks and every
-  figure read with its page). It is printed by your Chromium browser in the background; if none can be found, the
-  browser's print dialog opens on the same page (choose *Save as PDF*).
+- **Download**: *Download report (PDF)* downloads a PDF in the app's style — summary card, findings, checks and
+  every figure read with its page — drawn by the local server in a fraction of a second (no browser involved).
 
 ## The spider
 
@@ -76,7 +75,7 @@ pink and cyan pings to the words and numbers ahead of it, and neon highlights (o
 rotated strips).
 
 It always reads **every** figure on the pages it opens and adapts its pace to how many there are (about
-20 seconds for a short document, up to about 2 minutes for a long one). The "N of M figures read" counter counts
+12 seconds for a short document, up to about 75 seconds for a long one). The "N of M figures read" counter counts
 the figures on those pages, and the panel lists which pages of the document were read (the cover and the pages
 with the financial statements and the key figures).
 

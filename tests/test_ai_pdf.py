@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from analyst import ai, pdfexport, pipeline  # noqa: E402
+from analyst import ai, pipeline  # noqa: E402
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -66,11 +66,18 @@ def test_provider_error_becomes_a_warning(cfg, monkeypatch, tmp_path):
     assert not a["ai"] and a["findings"] and any("Incorrect API key" in w for w in a["warnings"])
 
 
-def test_pdf_export(monkeypatch):
-    chrome = next(Path("/opt/pw-browsers").glob("chromium-*/chrome-linux/chrome"), None) if Path("/opt/pw-browsers").exists() else None
-    if chrome:
-        monkeypatch.setenv("SPIDER_CHROME", str(chrome))
-    if not pdfexport.chromium_executable():
-        pytest.skip("no Chromium browser here")
-    pdf = pdfexport.html_to_pdf('<!doctype html><html><body style="background:#ff2d8f"><h1>Spider</h1></body></html>')
-    assert pdf.startswith(b"%PDF") and len(pdf) > 1000
+def test_pdf_report(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "DOCS", tmp_path / "docs")
+    import make_fixtures
+    FIX.mkdir(exist_ok=True)
+    (FIX / "sec_10k.htm").write_text(make_fixtures.sec(), encoding="utf-8")
+    from analyst import pdfreport
+    for lang in ("en", "it"):
+        a = pipeline.run({"kind": "upload", "data": (FIX / "sec_10k.htm").read_bytes(), "name": "x.htm", "lang": lang}, lambda *_: None)
+        pdf = pdfreport.build(json.loads(json.dumps(a)))           # as stored on disk (string keys)
+        assert pdf.startswith(b"%PDF") and len(pdf) > 3000
+        import pypdfium2 as pdfium
+        doc = pdfium.PdfDocument(pdf)
+        text = "".join(doc[i].get_textpage().get_text_range() for i in range(len(doc)))
+        assert ("Key findings" if lang == "en" else "Osservazioni chiave") in text
+        assert ("$120B" if lang == "en" else "$120 mld") in text and "EXAMPLE CORP" in text

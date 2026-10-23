@@ -99,31 +99,32 @@ def pdf_document(data: bytes, img_dir: Path, img_url: str) -> dict:
     n = len(pdf)
     if n == 0:
         raise ValueError("PDF senza pagine")
-    pages_words, sizes = [], []
-    for i in range(min(n, 600)):
+    # 1) choose the pages from plain text (fast); 2) word boxes only for the chosen pages
+    sizes, texts = [], []
+    for i in range(n):
         page = pdf[i]
-        w, h = page.get_size()
-        sizes.append((w, h))
+        sizes.append(page.get_size())
         tp = page.get_textpage()
-        pages_words.append(_words(tp, h))
+        texts.append(tp.get_text_range() or "")
         tp.close()
         page.close()
-
-    cand = []
-    for i, words in enumerate(pages_words):
-        figs = _label_figures(words)
-        score = sum(f["score"] for f in figs) + 0.1 * len(figs)
-        cand.append((score, i, figs))
-    chosen = {0} | {i for s, i, _ in sorted(cand, reverse=True)[:MAX_PAGES_SHOWN - 1] if s > 0}
-    chosen = sorted(chosen)
+    cand = sorted(((_score_text(txt), i) for i, txt in enumerate(texts)), reverse=True)
+    chosen = sorted({0} | {i for sc, i in cand[:MAX_PAGES_SHOWN - 1] if sc > 0})
+    pages_words = {}
+    for i in chosen:
+        page = pdf[i]
+        tp = page.get_textpage()
+        pages_words[i] = _words(tp, sizes[i][1])
+        tp.close()
+        page.close()
 
     img_dir.mkdir(parents=True, exist_ok=True)
     out_pages, facts, headings, page_text = [], [], [], []
     for i in chosen:
         w, h = sizes[i]
         scale = 96 / 72
-        bmp = pdf[i].render(scale=2.2)
-        bmp.to_pil().save(img_dir / f"p{i + 1}.png", optimize=True)
+        bmp = pdf[i].render(scale=2.0)
+        bmp.to_pil().convert("RGB").save(img_dir / f"p{i + 1}.jpg", quality=88)   # JPEG: ~50x faster than PNG
         words = pages_words[i]
         figs = {id(f["word"]): f for f in _label_figures(words)}
         keep = sorted(figs.values(), key=lambda f: -f["score"])[:MAX_FACTS_PAGE]
@@ -151,13 +152,35 @@ def pdf_document(data: bytes, img_dir: Path, img_url: str) -> dict:
         out_pages.append({
             "n": i + 1,
             "html": (f'<div class="pdfpage" style="width:{w * scale:.0f}px;height:{h * scale:.0f}px">'
-                     f'<img src="{img_url}/p{i + 1}.png" alt="">{"".join(spans)}</div>'),
+                     f'<img src="{img_url}/p{i + 1}.jpg" alt="">{"".join(spans)}</div>'),
         })
         page_text.append(" ".join(wd["t"] for wd in words))
     title = (pdf.get_metadata_dict().get("Title") or "").strip()
     pdf.close()
     return {"pages": out_pages, "facts": facts, "headings": headings, "page_text": page_text,
             "total_pages": n, "title": title, "css": PDF_CSS}
+
+
+def _score_text(text: str) -> float:
+    """How much a page looks like it holds the figures that matter (plain text, no layout)."""
+    from . import statements
+    score, nfig = 0.0, 0
+    for line in text.splitlines():
+        label: list[str] = []
+        row_figs = 0
+        for tok in line.split():
+            if is_figure(tok, allow_digit=True):
+                sc = score_label(" ".join(label[-9:]))
+                if re.fullmatch(r"\d", tok) and sc < 3:
+                    continue
+                score += sc + (0.5 if tok.endswith("%") else 0)
+                nfig += 1
+                row_figs += 1
+            elif not re.fullmatch(r"[\W\d]+", tok):
+                label.append(tok)
+        if row_figs and label and statements.match(" ".join(label)):
+            score += 2                                     # a financial statement row
+    return score + 0.1 * nfig
 
 
 def _words(tp, page_h: float) -> list[dict]:

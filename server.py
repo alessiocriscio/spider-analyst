@@ -4,7 +4,6 @@ Listens on localhost only. Long analyses run as background jobs the page polls.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import re
@@ -19,7 +18,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from analyst import ai, pdfexport, pipeline, sources
+from analyst import ai, pdfreport, pipeline, sources
 from analyst.i18n import system_lang, ui
 
 ROOT = Path(__file__).resolve().parent
@@ -205,28 +204,25 @@ def view(aid: str):
 
 @app.get("/api/doc/{aid}/img/{name}")
 def doc_img(aid: str, name: str):
-    if not re.fullmatch(r"[0-9a-f]{16}", aid) or not re.fullmatch(r"p\d{1,4}\.png", name):
+    if not re.fullmatch(r"[0-9a-f]{16}", aid) or not re.fullmatch(r"p\d{1,4}\.(png|jpg)", name):
         raise HTTPException(404)
     p = pipeline.DOCS / aid / "img" / name
     if not p.exists():
         raise HTTPException(404)
-    return FileResponse(p, media_type="image/png")
+    return FileResponse(p, media_type="image/jpeg" if name.endswith(".jpg") else "image/png")
 
 
-@app.post("/api/pdf")
-async def pdf(request: Request):
-    """The downloadable report, printed to PDF by the installed Chromium browser."""
-    body = await request.json()
-    html, name = str(body.get("html", "")), str(body.get("name", "report"))
-    if not html.startswith("<!doctype html>") or len(html) > 20_000_000:
-        raise HTTPException(400, ui("richiesta non valida", "invalid request"))
-    name = re.sub(r"[^\w.-]+", "-", name)[:120] or "report"
-    try:
-        data = await asyncio.to_thread(pdfexport.html_to_pdf, html)
-    except pdfexport.PdfError as e:
-        raise HTTPException(501, str(e))
+@app.get("/api/doc/{aid}/report.pdf")
+def report_pdf(aid: str):
+    """The report as a PDF in the app's style, drawn by the server (no browser involved)."""
+    a = pipeline.load(aid)
+    if not a:
+        raise HTTPException(404, ui("analisi non trovata", "analysis not found"))
+    name = re.sub(r"[^\w-]+", "-", a.get("title") or "report").strip("-").lower()[:80] or "report"
+    data = pdfreport.build(a)
     return Response(data, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+                    headers={"Content-Disposition": f'attachment; filename="{name}-report-{a.get("lang", "en")}.pdf"',
+                             "Cache-Control": "no-store"})
 
 
 @app.get("/api/recent")
