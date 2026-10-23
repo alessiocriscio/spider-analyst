@@ -1,6 +1,9 @@
-"""Optional Claude pass (needs an Anthropic API key; everything works without it).
+"""Optional AI pass (needs an API key from one provider; everything works without it).
 
-Claude never introduces numbers of its own: it receives the figures already read
+Providers: Anthropic (Claude, official SDK) and, through their OpenAI-compatible
+chat endpoints, OpenAI, Google Gemini, Mistral, xAI, DeepSeek and OpenRouter.
+
+The model never introduces numbers of its own: it receives the figures already read
 from the document (each with an id, its value as printed and its page) and may only
 cite those. Every observation is checked: each number in its text must match one
 of the figures it cites, and its pages must be the pages of those figures.
@@ -14,8 +17,29 @@ import re
 from pathlib import Path
 from typing import Optional
 
+import httpx
+
+CONFIG_DIR = Path.home() / ".spider-analyst"
+AI_FILE = CONFIG_DIR / "ai.json"                # {"provider": id, "keys": {id: key}, "models": {id: model}}
+LEGACY_KEY_FILE = CONFIG_DIR / "anthropic_key"
 MODEL = "claude-opus-5-5"
-KEY_FILE = Path.home() / ".spider-analyst" / "anthropic_key"
+
+# id -> display name, key environment variables, OpenAI-compatible base URL (None = Anthropic SDK), default model
+PROVIDERS = {
+    "anthropic": {"name": "Anthropic (Claude)", "env": ["ANTHROPIC_API_KEY"], "base": None, "model": MODEL},
+    "openai": {"name": "OpenAI", "env": ["OPENAI_API_KEY"], "base": "https://api.openai.com/v1", "model": "gpt-5"},
+    "gemini": {"name": "Google Gemini", "env": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+               "base": "https://generativelanguage.googleapis.com/v1beta/openai", "model": "gemini-2.5-pro"},
+    "mistral": {"name": "Mistral", "env": ["MISTRAL_API_KEY"], "base": "https://api.mistral.ai/v1", "model": "mistral-large-latest"},
+    "xai": {"name": "xAI (Grok)", "env": ["XAI_API_KEY"], "base": "https://api.x.ai/v1", "model": "grok-4"},
+    "deepseek": {"name": "DeepSeek", "env": ["DEEPSEEK_API_KEY"], "base": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
+    "openrouter": {"name": "OpenRouter", "env": ["OPENROUTER_API_KEY"], "base": "https://openrouter.ai/api/v1", "model": "openrouter/auto"},
+}
+
+
+class AIError(Exception):
+    pass
+
 
 SYSTEM = (
     "Sei un analista finanziario. Scrivi in italiano, frasi brevi e concrete, senza enfasi né consigli di investimento. "
@@ -33,31 +57,115 @@ def _lang_note() -> str:
     return ""
 
 
-def api_key() -> Optional[str]:
-    k = os.environ.get("ANTHROPIC_API_KEY")
-    if k:
-        return k.strip()
+# ---------------------------------------------------------------- configuration
+
+def load_settings() -> dict:
     try:
-        return KEY_FILE.read_text().strip() or None
+        data = json.loads(AI_FILE.read_text())
+    except (OSError, ValueError):
+        data = {}
+    data.setdefault("keys", {})
+    data.setdefault("models", {})
+    if "anthropic" not in data["keys"]:
+        try:
+            k = LEGACY_KEY_FILE.read_text().strip()
+            if k:
+                data["keys"]["anthropic"] = k
+        except OSError:
+            pass
+    return data
+
+
+def save_settings(provider: Optional[str] = None, key: Optional[str] = None, model: Optional[str] = None,
+                  remove: bool = False) -> None:
+    """key=None keeps the stored key; remove=True deletes it."""
+    data = load_settings()
+    if provider:
+        if provider not in PROVIDERS:
+            raise ValueError(provider)
+        data["provider"] = provider
+        if remove:
+            data["keys"].pop(provider, None)
+            if provider == "anthropic" and LEGACY_KEY_FILE.exists():
+                LEGACY_KEY_FILE.unlink()
+        elif key:
+            data["keys"][provider] = key
+        if model is not None:
+            if model.strip():
+                data["models"][provider] = model.strip()
+            else:
+                data["models"].pop(provider, None)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    AI_FILE.write_text(json.dumps(data, indent=2))
+    try:
+        os.chmod(AI_FILE, 0o600)
     except OSError:
-        return None
+        pass
+
+
+def key_for(pid: str) -> Optional[str]:
+    for var in PROVIDERS[pid]["env"]:
+        if os.environ.get(var, "").strip():
+            return os.environ[var].strip()
+    return load_settings()["keys"].get(pid) or None
+
+
+def active() -> Optional[tuple[str, str, str]]:
+    """(provider id, key, model) of the provider in use, or None."""
+    data = load_settings()
+    order = ([data["provider"]] if data.get("provider") in PROVIDERS else []) + list(PROVIDERS)
+    for pid in order:
+        key = key_for(pid)
+        if key:
+            if pid == "anthropic":
+                try:
+                    import anthropic  # noqa: F401
+                except ImportError:
+                    continue
+            return pid, key, data["models"].get(pid) or PROVIDERS[pid]["model"]
+    return None
 
 
 def available() -> bool:
-    if not api_key():
-        return False
-    try:
-        import anthropic  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    return active() is not None
 
+
+def provider_name() -> str:
+    a = active()
+    return PROVIDERS[a[0]]["name"] if a else ""
+
+
+def api_key() -> Optional[str]:
+    a = active()
+    return a[1] if a else None
+
+
+def status() -> dict:
+    data, a = load_settings(), active()
+    return {
+        "active": a[0] if a else None,
+        "providers": [{"id": pid, "name": p["name"], "has_key": bool(key_for(pid)), "default_model": p["model"],
+                       "model": data["models"].get(pid, "")} for pid, p in PROVIDERS.items()],
+    }
+
+
+# ---------------------------------------------------------------- calls
 
 def _call(prompt: str, schema: dict, max_tokens: int = 8000) -> Optional[dict]:
+    a = active()
+    if not a:
+        return None
+    pid, key, model = a
+    if pid == "anthropic":
+        return _call_anthropic(key, model, prompt, schema, max_tokens)
+    return _call_openai_compatible(pid, key, model, prompt, schema)
+
+
+def _call_anthropic(key: str, model: str, prompt: str, schema: dict, max_tokens: int) -> Optional[dict]:
     import anthropic
-    client = anthropic.Anthropic(api_key=api_key(), timeout=180.0)
+    client = anthropic.Anthropic(api_key=key, timeout=180.0)
     resp = client.beta.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=max_tokens,
         system=SYSTEM + _lang_note(),
         messages=[{"role": "user", "content": prompt}],
@@ -68,10 +176,50 @@ def _call(prompt: str, schema: dict, max_tokens: int = 8000) -> Optional[dict]:
     if resp.stop_reason in ("refusal", "max_tokens"):
         return None
     text = next((b.text for b in resp.content if b.type == "text"), "")
+    return _json(text)
+
+
+def _call_openai_compatible(pid: str, key: str, model: str, prompt: str, schema: dict) -> Optional[dict]:
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if pid == "openrouter":
+        headers.update({"HTTP-Referer": "https://github.com/alessiocriscio/spider-analyst", "X-Title": "Spider Analyst"})
+    system = (SYSTEM + _lang_note() + " Rispondi solo con un oggetto JSON valido conforme a questo JSON Schema, senza altro testo: "
+              + json.dumps(schema, ensure_ascii=False))
+    body = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"}}
+    url = PROVIDERS[pid]["base"] + "/chat/completions"
+    r = httpx.post(url, headers=headers, json=body, timeout=180)
+    if r.status_code == 400 and "response_format" in r.text:
+        body.pop("response_format")                       # some models do not support JSON mode
+        r = httpx.post(url, headers=headers, json=body, timeout=180)
+    if r.status_code >= 400:
+        try:
+            msg = r.json().get("error", {})
+            msg = msg.get("message") if isinstance(msg, dict) else str(msg)
+        except ValueError:
+            msg = r.text[:200]
+        raise AIError(f"{PROVIDERS[pid]['name']} {r.status_code}: {msg}")
+    try:
+        text = r.json()["choices"][0]["message"]["content"] or ""
+    except (ValueError, KeyError, IndexError, TypeError):
+        return None
+    return _json(text)
+
+
+def _json(text: str) -> Optional[dict]:
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
     try:
         return json.loads(text)
     except ValueError:
-        return None
+        i, j = text.find("{"), text.rfind("}")
+        if 0 <= i < j:
+            try:
+                return json.loads(text[i:j + 1])
+            except ValueError:
+                return None
+    return None
 
 
 # ---------------------------------------------------------------- validation

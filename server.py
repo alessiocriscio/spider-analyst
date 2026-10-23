@@ -4,6 +4,7 @@ Listens on localhost only. Long analyses run as background jobs the page polls.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -18,7 +19,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from analyst import ai, pipeline, sources
+from analyst import ai, pdfexport, pipeline, sources
 from analyst.i18n import system_lang, ui
 
 ROOT = Path(__file__).resolve().parent
@@ -66,7 +67,7 @@ def index():
 @app.get("/api/status")
 def status():
     cfg = sources.config()
-    return {"ai": ai.available(), "ai_key": bool(ai.api_key()), "sec_user_agent": sources.sec_user_agent(),
+    return {"ai": ai.available(), "ai_key": bool(ai.api_key()), "ai_providers": ai.status(), "sec_user_agent": sources.sec_user_agent(),
             "sec_ua_custom": bool(os.environ.get("SPIDER_SEC_UA") or cfg.get("sec_user_agent")),
             "model": ai.MODEL, "ui_lang": system_lang()}
 
@@ -85,15 +86,17 @@ async def settings(request: Request):
         else:
             cfg.pop("sec_user_agent", None)
         sources.CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
-    if "anthropic_key" in body:
-        key = str(body["anthropic_key"]).strip()
-        if key and not re.fullmatch(r"sk-ant-[\w-]{20,}", key):
-            raise HTTPException(400, ui("La chiave Anthropic deve iniziare con sk-ant-", "The Anthropic key must start with sk-ant-"))
-        if key:
-            ai.KEY_FILE.write_text(key)
-            os.chmod(ai.KEY_FILE, 0o600)
-        elif ai.KEY_FILE.exists():
-            ai.KEY_FILE.unlink()
+    if "ai_provider" in body:
+        pid = str(body["ai_provider"])
+        if pid not in ai.PROVIDERS:
+            raise HTTPException(400, ui("fornitore AI sconosciuto", "unknown AI provider"))
+        key = str(body.get("ai_key") or "").strip()
+        if key and (len(key) < 10 or len(key) > 300 or re.search(r"\s", key)):
+            raise HTTPException(400, ui("La chiave API non sembra valida.", "The API key does not look valid."))
+        model = body.get("ai_model")
+        if model is not None and (len(str(model)) > 120 or re.search(r"\s", str(model).strip())):
+            raise HTTPException(400, ui("Nome del modello non valido.", "Invalid model name."))
+        ai.save_settings(pid, key or None, None if model is None else str(model), remove=bool(body.get("ai_remove")))
     return status()
 
 
@@ -208,6 +211,22 @@ def doc_img(aid: str, name: str):
     if not p.exists():
         raise HTTPException(404)
     return FileResponse(p, media_type="image/png")
+
+
+@app.post("/api/pdf")
+async def pdf(request: Request):
+    """The downloadable report, printed to PDF by the installed Chromium browser."""
+    body = await request.json()
+    html, name = str(body.get("html", "")), str(body.get("name", "report"))
+    if not html.startswith("<!doctype html>") or len(html) > 20_000_000:
+        raise HTTPException(400, ui("richiesta non valida", "invalid request"))
+    name = re.sub(r"[^\w.-]+", "-", name)[:120] or "report"
+    try:
+        data = await asyncio.to_thread(pdfexport.html_to_pdf, html)
+    except pdfexport.PdfError as e:
+        raise HTTPException(501, str(e))
+    return Response(data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
 
 
 @app.get("/api/recent")

@@ -151,3 +151,4 @@ dialog small { display: block; color: var(--muted); margin-top: 4px; }
   border: 1.5px solid var(--down); border-radius: 8px; padding: 10px 14px; font-size: 14px; }
 /* Italian interface: hide the English defaults until they are translated (a frame at most) */
 html[lang="it"]:not(.ui-ready) body { visibility: hidden; }
+dialog select { display: block; width: 100%; margin-top: 4px; }

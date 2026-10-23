@@ -13,7 +13,9 @@ financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-bas
 - [x] `analyst/statements.py` — untagged statements (English / Italian row labels → metrics)
 - [x] `analyst/market.py` — generated market sheet for instruments without statements
 - [x] `analyst/generic.py` — PDF (page image + word layer) and plain HTML
-- [x] `analyst/ai.py` — optional Claude pass, limited to figures already read, numbers validated
+- [x] `analyst/ai.py` — optional AI pass (Anthropic SDK; OpenAI, Gemini, Mistral, xAI, DeepSeek, OpenRouter via
+      OpenAI-compatible endpoints), limited to figures already read, numbers validated
+- [x] `analyst/pdfexport.py` — report PDF printed by the installed Chromium (headless), print-dialog fallback
 - [x] `analyst/i18n.py` — interface language (system) and report language (Italian / English)
 - [x] `analyst/pipeline.py` — one analysis format for the web app, sanitised `view.html`
 - [x] `server.py`, `web/` — spider animation, pacing, live report, finale, report download
@@ -61,9 +63,10 @@ Every figure cites its page; the occurrence highlighted is the one on the page w
 - Interface in English, Italian when the OS language is Italian (server-side detection: macOS AppleLanguages,
   Windows UI language, LANG elsewhere); report in English or Italian; downloadable self-contained HTML report.
 
-## Claude (optional)
+## AI (optional)
 
-SDK `anthropic` 2.x, model `claude-opus-5-5`, `output_config` with a `json_schema` format and `effort`,
-`client.beta.messages.create(..., betas=["server-side-fallback-2026-07-01"], fallbacks="default")`, refusals handled.
-Key from `ANTHROPIC_API_KEY` or `~/.spider-analyst/anthropic_key`; without a key everything is deterministic.
-Numbers in generated observations must match the figures they cite, otherwise the observation is dropped.
+Anthropic through the `anthropic` SDK 2.x (`claude-opus-5-5`, `output_config` json_schema, `fallbacks="default"`,
+refusals handled); OpenAI, Google Gemini, Mistral, xAI, DeepSeek and OpenRouter through their OpenAI-compatible
+`/chat/completions` endpoints with JSON mode (retried without it when a model rejects it). Provider, key and model
+are set in Settings (`~/.spider-analyst/ai.json`) or via environment variables. Numbers in generated observations
+must match the figures they cite, otherwise the observation is dropped; provider errors become report warnings.

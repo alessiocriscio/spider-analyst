@@ -61,8 +61,9 @@ for XBRL filings. For other documents (KID, prospectus) it lists the main figure
   liquidity, leverage — deterministic calculations on the document's figures.
 - **Language**: Italian or English, chosen on the home page or while reading (the report is regenerated:
   findings, checks, labels, number formats — `$120B` / `$120 mld`).
-- **Download**: *Download report* saves a self-contained HTML file with the card, findings, checks and every figure
-  read with its page. To get a PDF, open it and use File → Print → Save as PDF.
+- **Download**: *Download report (PDF)* saves a PDF in the app's style (summary card, findings, checks and every
+  figure read with its page). It is printed by your Chromium browser in the background; if none can be found, the
+  browser's print dialog opens on the same page (choose *Save as PDF*).
 
 ## The spider
 
@@ -76,12 +77,24 @@ It always reads **every** figure on the pages it opens and adapts its pace to ho
 the figures on those pages, and the panel lists which pages of the document were read (the cover and the pages
 with the financial statements and the key figures).
 
-## Claude (optional)
+## AI findings (optional)
 
-With an Anthropic API key (*Settings*, or `ANTHROPIC_API_KEY`) you can tick *Findings written by Claude*
-(model `claude-opus-5-5`). Claude only receives the figures already read, each with an id; any observation with a
-number that is not among the figures it cites is dropped. On PDFs it picks the important figures among those
-found on the pages. Everything else works without a key, which is stored in `~/.spider-analyst/anthropic_key`.
+Add an API key in *Settings* to tick *Findings written by AI*. Supported providers:
+
+| Provider | Default model (editable) | Key from |
+|---|---|---|
+| Anthropic (Claude) | `claude-opus-5-5` | console.anthropic.com · `ANTHROPIC_API_KEY` |
+| OpenAI | `gpt-5` | platform.openai.com · `OPENAI_API_KEY` |
+| Google Gemini | `gemini-2.5-pro` | aistudio.google.com · `GEMINI_API_KEY` |
+| Mistral | `mistral-large-latest` | console.mistral.ai · `MISTRAL_API_KEY` |
+| xAI (Grok) | `grok-4` | console.x.ai · `XAI_API_KEY` |
+| DeepSeek | `deepseek-chat` | platform.deepseek.com · `DEEPSEEK_API_KEY` |
+| OpenRouter (any model it offers) | `openrouter/auto` | openrouter.ai · `OPENROUTER_API_KEY` |
+
+The model only receives the figures already read, each with an id; any observation with a number that is not among
+the figures it cites is dropped, so the report never shows numbers the document does not contain. On PDFs it picks
+the important figures among those found on the pages. Keys are stored in `~/.spider-analyst/ai.json` (readable only
+by you) or read from the environment variables above. Everything else works without a key.
 
 ## Data and privacy
 

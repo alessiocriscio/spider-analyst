@@ -104,9 +104,15 @@
       <input id="set-ua" type="text" data-i18n-ph="ua_ph" placeholder="Jane Doe jane@example.com">
       <small data-i18n="ua_help">The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.</small>
     </label>
-    <label><span data-i18n="key_label">Anthropic API key (optional)</span>
-      <input id="set-key" type="password" placeholder="sk-ant-…" autocomplete="off">
+    <label><span data-i18n="provider_label">AI provider (optional)</span>
+      <select id="set-provider"></select>
+    </label>
+    <label><span data-i18n="key_label">API key (optional)</span>
+      <input id="set-key" type="password" autocomplete="off">
       <small id="key-state"></small>
+    </label>
+    <label><span data-i18n="model_label">Model</span>
+      <input id="set-model" type="text" autocomplete="off" spellcheck="false">
     </label>
     <p id="set-msg" class="error" hidden></p>
     <div class="row end">

@@ -11,21 +11,21 @@ const UI = {
     search_label: "Search for an instrument", search_ph: "Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, gold…", search_btn: "Search",
     url_label: "Or paste the address of a document (PDF, HTML, iXBRL)", read_btn: "Read", drop_aria: "Upload a file",
     drop: "<b>Upload a document</b><br>Drop a PDF or HTML file here (statements, report, KID, in English or Italian) or <u>choose a file</u>",
-    opt_ai: "Findings written by Claude", opt_lang: "Report language", settings: "Settings", back_search: "Back to search",
-    new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download report",
+    opt_ai: "Findings written by AI", opt_lang: "Report language", settings: "Settings", back_search: "Back to search",
+    new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download report (PDF)", making_pdf: "Creating the PDF…",
     ua_label: "Identity for SEC EDGAR (User-Agent)", ua_ph: "Jane Doe jane@example.com",
     ua_help: "The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.",
-    key_label: "Anthropic API key (optional)", close: "Close", save: "Save",
+    key_label: "API key (optional)", provider_label: "AI provider (optional)", model_label: "Model", close: "Close", save: "Save",
     error: (m) => `Something went wrong: ${m} — reload the page (Cmd+R / Ctrl+R). If it happens again, send this message.`,
-    need_key: "Add an Anthropic API key in Settings",
+    need_key: "Add an API key (Anthropic, OpenAI, Gemini, OpenRouter…) in Settings",
     searching: (q) => `Searching for “${q}” on SEC EDGAR, filings.xbrl.org and Yahoo Finance…`,
     g_sec: "US annual report", g_sec_src: "SEC EDGAR: latest 10-K, 20-F or 40-F", read_filing: "Reads the filing",
     g_esef: "European annual report", g_esef_src: "ESEF from filings.xbrl.org", read_report: "Reads the report",
     g_market: "Markets", g_market_src: "Sheet generated from the Yahoo Finance price history",
     no_results: "No results. Try the ticker (e.g. MSFT, RACE.MI, BTC-USD) or upload the document directly.",
     uploading: (n) => `Uploading ${n}`, preparing: "Preparing the document", not_started: "The reading did not start",
-    recent: "Recently read", key_saved: "Key saved. Leave empty to keep it; type “remove” to delete it.",
-    key_info: "Only needed for findings written by Claude. Everything else works without a key.", remove_word: "remove",
+    recent: "Recently read", key_saved: "Key saved for this provider. Leave empty to keep it; type “remove” to delete it.",
+    key_info: "Only needed for findings written by AI. Everything else works without a key.", remove_word: "remove",
     relang: (l) => l === "en" ? "Preparing the English report" : "Preparing the Italian report",
   },
   it: {
@@ -34,21 +34,21 @@ const UI = {
     search_label: "Cerca uno strumento", search_ph: "Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, oro…", search_btn: "Cerca",
     url_label: "Oppure incolla l'indirizzo di un documento (PDF, HTML, iXBRL)", read_btn: "Leggi", drop_aria: "Carica un file",
     drop: "<b>Carica un documento</b><br>Trascina qui un PDF o HTML (bilancio, report, KID, in italiano o in inglese) o <u>scegli un file</u>",
-    opt_ai: "Osservazioni scritte da Claude", opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca",
-    new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica report",
+    opt_ai: "Osservazioni scritte dall'AI", opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca",
+    new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica report (PDF)", making_pdf: "Creo il PDF…",
     ua_label: "Identificazione per SEC EDGAR (User-Agent)", ua_ph: "Nome Cognome nome@esempio.it",
     ua_help: "La SEC chiede a chi scarica i bilanci di indicare un nome e un contatto. Resta su questo computer.",
-    key_label: "Chiave API Anthropic (facoltativa)", close: "Chiudi", save: "Salva",
+    key_label: "Chiave API (facoltativa)", provider_label: "Fornitore AI (facoltativo)", model_label: "Modello", close: "Chiudi", save: "Salva",
     error: (m) => `Qualcosa non ha funzionato: ${m} — ricarica la pagina (Cmd+R / Ctrl+R). Se si ripete, manda questo messaggio.`,
-    need_key: "Aggiungi una chiave API Anthropic nelle impostazioni",
+    need_key: "Aggiungi una chiave API (Anthropic, OpenAI, Gemini, OpenRouter…) nelle impostazioni",
     searching: (q) => `Cerco «${q}» su SEC EDGAR, filings.xbrl.org e Yahoo Finance…`,
     g_sec: "Bilancio annuale USA", g_sec_src: "SEC EDGAR: 10-K, 20-F o 40-F più recente", read_filing: "Legge il bilancio",
     g_esef: "Relazione annuale europea", g_esef_src: "ESEF da filings.xbrl.org", read_report: "Legge la relazione",
     g_market: "Mercati", g_market_src: "Scheda generata dallo storico prezzi Yahoo Finance",
     no_results: "Nessun risultato. Prova con il ticker (es. MSFT, RACE.MI, BTC-USD) o carica direttamente il documento.",
     uploading: (n) => `Carico ${n}`, preparing: "Preparo il documento", not_started: "La lettura non è partita",
-    recent: "Letti di recente", key_saved: "Chiave salvata. Lascia vuoto per non cambiarla; scrivi «rimuovi» per cancellarla.",
-    key_info: "Serve solo per le osservazioni scritte da Claude. Senza chiave tutto il resto funziona.", remove_word: "rimuovi",
+    recent: "Letti di recente", key_saved: "Chiave salvata per questo fornitore. Lascia vuoto per non cambiarla; scrivi «rimuovi» per cancellarla.",
+    key_info: "Serve solo per le osservazioni scritte dall'AI. Senza chiave tutto il resto funziona.", remove_word: "rimuovi",
     relang: (l) => l === "en" ? "Preparo il report in inglese" : "Preparo il report in italiano",
   },
 };
@@ -210,19 +210,34 @@ async function loadRecent() {
 }
 
 // settings
+function providerInfo(id) {
+  return (state.status?.ai_providers?.providers || []).find((p) => p.id === id);
+}
+function showProvider(id) {
+  const p = providerInfo(id);
+  if (!p) return;
+  $("#set-key").value = "";
+  $("#set-key").placeholder = p.has_key ? "••••••••" : { anthropic: "sk-ant-…", openai: "sk-…", openrouter: "sk-or-…", gemini: "AIza…" }[id] || "";
+  $("#key-state").textContent = p.has_key ? tr("key_saved") : tr("key_info");
+  $("#set-model").value = p.model || "";
+  $("#set-model").placeholder = p.default_model;
+}
 $("#open-settings").addEventListener("click", async () => {
   await refreshStatus();
   $("#set-ua").value = state.status?.sec_ua_custom ? state.status.sec_user_agent : "";
-  $("#set-key").value = "";
-  $("#key-state").textContent = state.status?.ai_key ? tr("key_saved") : tr("key_info");
+  const prov = state.status?.ai_providers?.providers || [];
+  $("#set-provider").innerHTML = prov.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.has_key ? " ✓" : ""}</option>`).join("");
+  $("#set-provider").value = state.status?.ai_providers?.active || "anthropic";
+  showProvider($("#set-provider").value);
   $("#set-msg").hidden = true;
   $("#settings").showModal();
 });
+$("#set-provider").addEventListener("change", () => showProvider($("#set-provider").value));
 $("#set-save").addEventListener("click", async () => {
-  const body = { sec_user_agent: $("#set-ua").value.trim() };
   const k = $("#set-key").value.trim();
-  if (k.toLowerCase() === tr("remove_word") || k.toLowerCase() === "remove") body.anthropic_key = "";
-  else if (k) body.anthropic_key = k;
+  const body = { sec_user_agent: $("#set-ua").value.trim(), ai_provider: $("#set-provider").value, ai_model: $("#set-model").value.trim() };
+  if (k.toLowerCase() === tr("remove_word") || k.toLowerCase() === "remove") body.ai_remove = true;
+  else if (k) body.ai_key = k;
   try { await postJSON("/api/settings", body); await refreshStatus(); $("#settings").close(); }
   catch (err) { $("#set-msg").textContent = err.message; $("#set-msg").hidden = false; }
 });
@@ -869,54 +884,100 @@ function cardHTML(a, count) {
     <div class="tiles">${tiles}</div>
     <ul>${(a.card_findings || []).map((f) => `<li>${esc(f.text)} <span class="pg">${fmtPages(f.pages)}</span></li>`).join("")}</ul>
     <div class="foot"><span><b>${count.toLocaleString(T.locale)}</b> ${esc(T.read)} · <b>${passed}</b> ${esc(T.checks)} ${(a.checks || []).length}</span>
-    <span>${esc(a.ai ? T.foot_ai : T.foot_det)}</span></div></div>`;
+    <span>${esc(a.ai ? T.foot_ai.replace("Claude", a.ai_provider || "AI") : T.foot_det)}</span></div></div>`;
 }
 
 // ------------------------------------------------------------------ downloadable report
 
-function downloadReport(a) {
-  const T = L(), lang = a.lang || "it";
+const SPIDER_ICON = `<svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true"><g stroke="#3fd4f5" stroke-width="1.6" fill="none" stroke-linecap="round">
+<path d="M19 15 L10 9 L4 12"/><path d="M19 19 L8 17 L3 21"/><path d="M19 24 L8 27 L4 33"/><path d="M19 28 L11 35 L9 41"/>
+<path d="M25 15 L34 9 L40 12"/><path d="M25 19 L36 17 L41 21"/><path d="M25 24 L36 27 L40 33"/><path d="M25 28 L33 35 L35 41"/></g>
+<g fill="#ff2d8f"><circle cx="10" cy="9" r="1.5"/><circle cx="8" cy="17" r="1.5"/><circle cx="8" cy="27" r="1.5"/><circle cx="11" cy="35" r="1.5"/>
+<circle cx="34" cy="9" r="1.5"/><circle cx="36" cy="17" r="1.5"/><circle cx="36" cy="27" r="1.5"/><circle cx="33" cy="35" r="1.5"/></g>
+<rect x="18.5" y="12" width="7" height="20" rx="1.5" fill="#0b0d12" stroke="#3b6cff" stroke-width="1.5"/><circle cx="22" cy="35" r="2.2" fill="#4fe3ff"/></svg>`;
+
+// the report as a styled, self-contained page (printed to PDF by the server)
+function reportHTML(a) {
+  const T = L(), lang = a.lang || "en";
   const cell = (fid) => fid === null || fid === undefined ? "" : esc(a.facts[fid]?.value_fmt ?? "");
   const tables = a.pages.map((p) => {
     const rows = a.rows[p.n] || [];
     if (!rows.length) return "";
     const cols = a.cols[p.n] || [T.value];
-    return `<h3>${esc(p.title)} <span class="pg">${T.p} ${p.n}</span></h3><table><tr><th>${esc(T.label)}</th>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>` +
-      rows.map((r) => `<tr><td>${esc(r.label)}</td>${r.cells.map((f) => `<td class="n">${cell(f)}</td>`).join("")}</tr>`).join("") + "</table>";
+    return `<section class="tbl"><h3>${esc(p.title)} <span class="pg">${T.p} ${p.n}</span></h3><table><tr><th>${esc(T.label)}</th>${cols.map((c) => `<th class="n">${esc(c)}</th>`).join("")}</tr>` +
+      rows.map((r) => `<tr><td>${esc(r.label)}</td>${r.cells.map((f) => `<td class="n">${cell(f)}</td>`).join("")}</tr>`).join("") + "</table></section>";
   }).join("");
   const inRows = new Set(Object.values(a.rows).flat().flatMap((r) => r.cells).filter((x) => x !== null).map(String));
   const others = Object.entries(a.facts).filter(([id]) => !inRows.has(String(id)));
-  const otherHTML = others.length ? `<h3>${esc(T.other)}</h3><table>` + others.map(([, f]) =>
-    `<tr><td>${esc(f.label)}</td><td class="n">${esc(f.value_fmt)}</td><td class="pg">${T.p} ${f.page}</td></tr>`).join("") + "</table>" : "";
-  const checks = (a.checks || []).map((c) => `<li>${c.ok ? "✓" : "✗"} ${esc(c.name)} — ${esc(c.ok ? T.ok : T.ko)}${c.detail && !c.ok ? " (" + esc(c.detail) + ")" : ""}</li>`).join("");
+  const otherHTML = others.length ? `<section class="tbl"><h3>${esc(T.other)}</h3><table>` + others.map(([, f]) =>
+    `<tr><td>${esc(f.label)}</td><td class="n">${esc(f.value_fmt)}</td><td class="n pg">${T.p} ${f.page}</td></tr>`).join("") + "</table></section>" : "";
+  const checks = (a.checks || []).map((c) => `<li class="${c.ok ? "ok" : "ko"}"><b>${c.ok ? "✓" : "✗"}</b> ${esc(c.name)} — ${esc(c.ok ? T.ok : T.ko)}${c.detail && !c.ok ? " (" + esc(c.detail) + ")" : ""}</li>`).join("");
+  const passed = (a.checks || []).filter((c) => c.ok).length;
   const today = new Date().toLocaleDateString(T.locale, { day: "numeric", month: "long", year: "numeric" });
-  const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(a.title)} — Spider Analyst</title><style>
-body{font:15px/1.5 -apple-system,Helvetica,Arial,sans-serif;color:#1d1c26;max-width:860px;margin:32px auto;padding:0 20px}
-h1{font:700 32px/1.1 Charter,Georgia,serif;margin:0 0 4px}h2{font:700 21px Charter,Georgia,serif;margin:30px 0 10px}
-h3{font:600 16px Charter,Georgia,serif;margin:22px 0 6px}.sub{color:#6c6a7c;margin:0 0 6px}
-.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}.tile{border:1px solid #d6d4e0;border-radius:6px;padding:10px 12px}
-.l{font-size:12px;color:#6c6a7c}.v{font:700 22px/1.2 -apple-system,Helvetica,sans-serif}.up{color:#0f8a5f;font-weight:600;font-size:13px}.down{color:#c8323c;font-weight:600;font-size:13px}
-.pg{color:#ff2d8f;font-size:12px;font-weight:600;white-space:nowrap}table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
-td,th{border-bottom:1px solid #eee;padding:4px 6px;text-align:left}th{color:#6c6a7c;font-weight:500}.n{text-align:right;white-space:nowrap}
-li{margin:0 0 6px}.foot{color:#6c6a7c;font-size:12px;margin-top:30px;border-top:1px solid #d6d4e0;padding-top:10px}
-@media print{body{margin:0}.noprint{display:none}}@media(max-width:640px){.tiles{grid-template-columns:repeat(2,1fr)}}
+  const tiles = (a.card || []).map((t) => `<div class="tile"><div class="l">${esc(lang === "en" && t.en ? t.en : t.it)}</div><div class="v">${esc(t.display)}</div>${t.yoy_display ? `<div class="${t.yoy_display.startsWith("+") ? "up" : "down"}">${esc(t.yoy_display)} ${esc(T.yoy)}</div>` : ""}<span class="pg">${fmtPages(t.pages)}</span></div>`).join("");
+  const source = /^https?:/.test(a.source || "") ? `<a href="${esc(a.source)}">${esc(a.source)}</a>` : esc(a.source || "");
+  const aiNote = a.ai ? T.foot_ai.replace("Claude", a.ai_provider || "AI") : T.foot_det;
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${esc(a.title)} — Spider Analyst</title><style>
+@page{size:A4;margin:14mm 14mm 16mm}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
+body{font:12.5px/1.5 -apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;color:#1d1c26;margin:0;background:#fff}
+.brand{display:flex;align-items:center;gap:8px;font:600 12px -apple-system,Helvetica,sans-serif;color:#6c6a7c;margin-bottom:14px}
+.brand span{color:#1d1c26}
+.card{border:2px solid #1d1c26;border-radius:10px;padding:20px 22px 16px;box-shadow:7px 7px 0 #ff2d8f;margin:0 7px 26px 0;break-inside:avoid}
+h1{font:700 28px/1.1 Charter,"Iowan Old Style",Georgia,serif;margin:0}
+.sub{color:#6c6a7c;margin:4px 0 0;font-size:12px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}
+.tile{border:1px solid #d6d4e0;border-radius:6px;padding:9px 11px}
+.l{font-size:11px;color:#6c6a7c}.v{font:700 20px/1.2 -apple-system,Helvetica,sans-serif;font-variant-numeric:tabular-nums;margin:2px 0}
+.up{color:#0f8a5f;font-weight:600;font-size:11.5px}.down{color:#c8323c;font-weight:600;font-size:11.5px}
+.pg{color:#ff2d8f;font-size:11px;font-weight:600;white-space:nowrap}
+.foot1{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #d6d4e0;margin-top:14px;padding-top:8px;color:#6c6a7c;font-size:11px}
+.foot1 b{color:#1d1c26}
+h2{font:700 18px Charter,"Iowan Old Style",Georgia,serif;margin:22px 0 8px;padding-bottom:4px;border-bottom:2px solid #1d1c26}
+h3{font:600 14px Charter,"Iowan Old Style",Georgia,serif;margin:16px 0 6px}
+ol,ul{margin:0;padding-left:1.3em}li{margin:0 0 6px;font:13.5px/1.45 Charter,"Iowan Old Style",Georgia,serif;break-inside:avoid}
+ul.checks{list-style:none;padding:0}ul.checks li{font:12.5px/1.45 -apple-system,Helvetica,sans-serif}
+li.ok b{color:#0f8a5f}li.ko b{color:#c8323c}
+table{border-collapse:collapse;width:100%;font-size:11.5px;font-variant-numeric:tabular-nums}
+tr{break-inside:avoid}td,th{border-bottom:1px solid #ecebf2;padding:4px 6px;text-align:left}
+th{color:#6c6a7c;font-weight:500}.n{text-align:right;white-space:nowrap}
+tr:nth-child(even) td{background:#fafafd}
+.tbl h3 .pg{margin-left:4px}
+.src{color:#6c6a7c;font-size:11px;margin-top:8px;word-break:break-all}.src a{color:#3b6cff}
+.end{color:#6c6a7c;font-size:10.5px;margin-top:24px;border-top:1px solid #d6d4e0;padding-top:8px}
 </style></head><body>
-<h1>${esc(a.title)}</h1><p class="sub">${esc(a.subtitle)}</p>
-<p class="sub">${esc(T.source)}: ${/^https?:/.test(a.source || "") ? `<a href="${esc(a.source)}">${esc(a.source)}</a>` : esc(a.source || "")}</p>
-<div class="tiles">${(a.card || []).map((t) => `<div class="tile"><div class="l">${esc(lang === "en" && t.en ? t.en : t.it)}</div><div class="v">${esc(t.display)}</div>${t.yoy_display ? `<div class="${t.yoy_display.startsWith("+") ? "up" : "down"}">${esc(t.yoy_display)} ${esc(T.yoy)}</div>` : ""}<span class="pg">${fmtPages(t.pages)}</span></div>`).join("")}</div>
+<div class="brand">${SPIDER_ICON}<span>Spider Analyst</span> · ${esc(T.report)} · ${esc(today)}</div>
+<div class="card"><h1>${esc(a.title)}</h1><p class="sub">${esc(a.subtitle)}</p>
+<div class="tiles">${tiles}</div>
+<div class="foot1"><span><b>${Object.keys(a.facts).length}</b> ${esc(T.read)} · <b>${passed}</b> ${esc(T.checks)} ${(a.checks || []).length}</span><span>${esc(aiNote)}</span></div></div>
 <h2>${esc(T.obs)}</h2><ol>${(a.findings || []).map((f) => `<li>${esc(f.text)} <span class="pg">${fmtPages(f.pages)}</span></li>`).join("")}</ol>
-${checks ? `<h2>${esc(T.controls)}</h2><ul>${checks}</ul>` : ""}
+${checks ? `<h2>${esc(T.controls)}</h2><ul class="checks">${checks}</ul>` : ""}
 <h2>${esc(T.figures)} (${Object.keys(a.facts).length})</h2>${tables}${otherHTML}
-<p class="foot">${esc(T.made)} ${esc(today)}. ${esc(a.ai ? T.foot_ai : T.foot_det)}. <span class="noprint">${esc(T.print)}</span></p>
+<p class="src">${esc(T.source)}: ${source}</p>
+<p class="end">${esc(T.made)} ${esc(today)}. ${esc(aiNote)}.</p>
 </body></html>`;
-  const name = (a.title || "report").normalize("NFD").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${name}-report-${lang}.html`;
-  document.body.append(link); link.click(); link.remove();
-  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+}
+
+async function downloadReport(a) {
+  const html = reportHTML(a);
+  const name = `${(a.title || "report").normalize("NFD").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase()}-report-${a.lang || "en"}`;
+  const btn = $("#download"), label = btn.textContent;
+  btn.disabled = true; btn.textContent = tr("making_pdf");
+  try {
+    const r = await fetch("/api/pdf", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ html, name }) });
+    if (!r.ok) throw new Error(String(r.status));
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(await r.blob());
+    link.download = name + ".pdf";
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+  } catch {
+    // no Chromium executable for headless printing: the browser's own print dialog saves the same page as PDF
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 400); }
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 
 // ------------------------------------------------------------------ hero spider (home)

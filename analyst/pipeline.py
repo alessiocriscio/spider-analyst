@@ -151,7 +151,7 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
             obs = ai.observations(f"{company} {form} {period}", data)
         except Exception as e:  # network/API errors: keep the deterministic findings
             obs = []
-            meta.setdefault("warnings", []).append(t("Claude non disponibile: ", "Claude unavailable: ") + type(e).__name__)
+            meta.setdefault("warnings", []).append(t("AI non disponibile: ", "AI unavailable: ") + (str(e)[:200] if isinstance(e, ai.AIError) else type(e).__name__))
         if len(obs) >= 3:
             finds, ai_used = obs, True
 
@@ -171,7 +171,7 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
         "cols": cols, "rows": rows, "facts": facts, "total_facts": len(doc.facts),
         "headings": [h for h in doc.headings if h["page"] in shown],
         "findings": finds[:6], "card": card, "card_findings": finds[:3], "checks": checks,
-        "warnings": doc.warnings + meta.get("warnings", []), "ai": ai_used,
+        "warnings": doc.warnings + meta.get("warnings", []), "ai": ai_used, "ai_provider": ai.provider_name() if ai_used else "",
     }
     return save(a, view)
 
@@ -265,7 +265,7 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
             res = ai.pick_figures(title, texts, cands)
         except Exception as e:
             res = None
-            meta.setdefault("warnings", []).append(t("Claude non disponibile: ", "Claude unavailable: ") + type(e).__name__)
+            meta.setdefault("warnings", []).append(t("AI non disponibile: ", "AI unavailable: ") + (str(e)[:200] if isinstance(e, ai.AIError) else type(e).__name__))
         if res and res["figures"]:
             ai_used = True
             kind_label = res["kind"] or kind_label
@@ -284,7 +284,7 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
                      "source": url or name, "total_pages": g["total_pages"], "total_facts": len(g["facts"]),
                      "headings": g["headings"], "facts": facts,
                      "pages": [{"n": p["n"], "title": next((h["text"] for h in g["headings"] if h["page"] == p["n"]), t(f"Pagina {p['n']}", f"Page {p['n']}"))} for p in g["pages"]],
-                     "warnings": meta.get("warnings", []), "ai": ai_used}, view_html(g["pages"], g["css"], flush=is_pdf))
+                     "warnings": meta.get("warnings", []), "ai": ai_used, "ai_provider": ai.provider_name() if ai_used else ""}, view_html(g["pages"], g["css"], flush=is_pdf))
     keyed = sorted((f for f in g["facts"] if facts[f["id"]]["key"]), key=lambda f: -f["score"]) if not ai_used else \
         [next(x for x in g["facts"] if x["id"] == int(p["id"])) for p in res["figures"]]
     if not finds:
@@ -299,7 +299,7 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
     a = {
         "id": meta["id"], "kind": "pdf" if is_pdf else "html", "title": title,
         "subtitle": " · ".join(x for x in (kind_label, t(f"{g['total_pages']} pagine", f"{g['total_pages']} pages"),
-                                           t("estrazione euristica", "heuristic extraction") if not ai_used else t("cifre scelte da Claude", "figures chosen by Claude")) if x),
+                                           t("estrazione euristica", "heuristic extraction") if not ai_used else t("cifre scelte da ", "figures chosen by ") + ai.provider_name()) if x),
         "source": url or name, "currency": "",
         "pages": [{"n": p["n"], "title": next((h["text"] for h in g["headings"] if h["page"] == p["n"]), t(f"Pagina {p['n']}", f"Page {p['n']}"))} for p in g["pages"]],
         "total_pages": g["total_pages"], "cols": cols, "rows": rows, "facts": facts, "total_facts": len(g["facts"]),
@@ -307,8 +307,8 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
         "checks": [{"name": t("Ogni cifra mostrata compare nel testo della pagina", "Every figure shown appears in the page text"),
                     "ok": True, "pages": [], "detail": ""}],
         "warnings": meta.get("warnings", []) + ([] if ai_used or not use_ai else
-                                                 [t("Claude non configurato: cifre scelte con regole euristiche.", "Claude not configured: figures chosen by heuristic rules.")] if not ai.available() else []),
-        "ai": ai_used,
+                                                 [t("Nessuna chiave AI configurata: cifre scelte con regole euristiche.", "No AI key configured: figures chosen by heuristic rules.")] if not ai.available() else []),
+        "ai": ai_used, "ai_provider": ai.provider_name() if ai_used else "",
     }
     return save(a, view)
 
