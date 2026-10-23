@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from analyst import ai, pipeline, sources
+from analyst.i18n import system_lang, ui
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
@@ -56,7 +57,7 @@ def _version() -> str:
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    html = (WEB / "index.html").read_text(encoding="utf-8").replace("__V__", _version())
+    html = (WEB / "index.html").read_text(encoding="utf-8").replace("__V__", _version()).replace("__UI__", system_lang())
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
@@ -67,13 +68,13 @@ def status():
     cfg = sources.config()
     return {"ai": ai.available(), "ai_key": bool(ai.api_key()), "sec_user_agent": sources.sec_user_agent(),
             "sec_ua_custom": bool(os.environ.get("SPIDER_SEC_UA") or cfg.get("sec_user_agent")),
-            "model": ai.MODEL}
+            "model": ai.MODEL, "ui_lang": system_lang()}
 
 
 @app.post("/api/settings")
 async def settings(request: Request):
     if not request.headers.get("content-type", "").startswith("application/json"):
-        raise HTTPException(415, "JSON richiesto")
+        raise HTTPException(415, ui("JSON richiesto", "JSON required"))
     body = await request.json()
     sources.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     if "sec_user_agent" in body:
@@ -87,7 +88,7 @@ async def settings(request: Request):
     if "anthropic_key" in body:
         key = str(body["anthropic_key"]).strip()
         if key and not re.fullmatch(r"sk-ant-[\w-]{20,}", key):
-            raise HTTPException(400, "La chiave Anthropic deve iniziare con sk-ant-")
+            raise HTTPException(400, ui("La chiave Anthropic deve iniziare con sk-ant-", "The Anthropic key must start with sk-ant-"))
         if key:
             ai.KEY_FILE.write_text(key)
             os.chmod(ai.KEY_FILE, 0o600)
@@ -124,7 +125,7 @@ def search(q: str):
 
 def _start(req: dict) -> str:
     jid = uuid.uuid4().hex[:12]
-    job = {"id": jid, "status": "running", "step": "In coda", "progress": 0.02, "error": None, "analysis_id": None, "t": time.time()}
+    job = {"id": jid, "status": "running", "step": ui("In coda", "Queued"), "progress": 0.02, "error": None, "analysis_id": None, "t": time.time()}
     with jobs_lock:
         jobs[jid] = job
 
@@ -134,11 +135,11 @@ def _start(req: dict) -> str:
     def work():
         try:
             a = pipeline.relang(req["id"], req["lang"], progress) if req["kind"] == "relang" else pipeline.run(req, progress)
-            job.update(status="done", progress=1.0, step="Pronto", analysis_id=a["id"])
+            job.update(status="done", progress=1.0, step=ui("Pronto", "Ready"), analysis_id=a["id"])
         except sources.SourceError as e:
             job.update(status="error", error=str(e))
         except Exception as e:  # keep the server alive; show the reason
-            job.update(status="error", error=f"Errore imprevisto: {type(e).__name__}: {e}")
+            job.update(status="error", error=ui("Errore imprevisto: ", "Unexpected error: ") + f"{type(e).__name__}: {e}")
     pool.submit(work)
     return jid
 
@@ -148,7 +149,7 @@ async def analyze(request: Request):
     body = await request.json()
     kind = body.get("kind")
     if kind not in ("sec", "esef", "market", "url"):
-        raise HTTPException(400, "kind non valido")
+        raise HTTPException(400, ui("tipo di richiesta non valido", "invalid request type"))
     req = {k: body[k] for k in ("kind", "query", "symbol", "url", "form", "ai", "refresh", "lang") if k in body}
     return {"job": _start(req)}
 
@@ -158,7 +159,7 @@ async def relang(request: Request):
     body = await request.json()
     lang = body.get("lang")
     if lang not in ("it", "en") or not re.fullmatch(r"[0-9a-f]{16}", str(body.get("id", ""))):
-        raise HTTPException(400, "richiesta non valida")
+        raise HTTPException(400, ui("richiesta non valida", "invalid request"))
     return {"job": _start({"kind": "relang", "id": body["id"], "lang": lang})}
 
 
@@ -166,7 +167,7 @@ async def relang(request: Request):
 async def upload(file: UploadFile = File(...), use_ai: bool = Form(False), lang: str = Form("it")):
     data = await file.read(MAX_UPLOAD + 1)
     if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, "File troppo grande (max 80 MB)")
+        raise HTTPException(413, ui("File troppo grande (max 80 MB)", "File too large (max 80 MB)"))
     return {"job": _start({"kind": "upload", "data": data, "name": file.filename or "documento", "ai": use_ai, "lang": lang})}
 
 
@@ -174,7 +175,7 @@ async def upload(file: UploadFile = File(...), use_ai: bool = Form(False), lang:
 def job(jid: str):
     j = jobs.get(jid)
     if not j:
-        raise HTTPException(404, "job sconosciuto")
+        raise HTTPException(404, ui("job sconosciuto", "unknown job"))
     return {k: v for k, v in j.items() if k != "t"}
 
 
@@ -184,7 +185,7 @@ def job(jid: str):
 def doc(aid: str):
     a = pipeline.load(aid)
     if not a:
-        raise HTTPException(404, "analisi non trovata")
+        raise HTTPException(404, ui("analisi non trovata", "analysis not found"))
     return JSONResponse(a)
 
 

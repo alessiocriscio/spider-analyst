@@ -1,5 +1,69 @@
 import { Spider, pingLine } from "./spider.js";
 
+// ------------------------------------------------------------------ interface language
+// English by default; Italian when the operating system is set to Italian (detected by the local server)
+
+const UI_LANG = document.documentElement.lang === "it" ? "it" : "en";
+const UI = {
+  en: {
+    lead: "A spider reads a financial document, figure by figure, and writes the report as it walks.",
+    warn: "This browser is not supported: Spider Analyst only works in Chromium-based browsers (Chrome, Brave, Edge, Arc). In Safari and Firefox the spider does not read the document. Open <b>http://127.0.0.1:8765</b> in one of those browsers, or start Spider Analyst again from the terminal: it opens the right browser by itself.",
+    search_label: "Search for an instrument", search_ph: "Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, gold…", search_btn: "Search",
+    url_label: "Or paste the address of a document (PDF, HTML, iXBRL)", read_btn: "Read", drop_aria: "Upload a file",
+    drop: "<b>Upload a document</b><br>Drop a PDF or HTML file here (statements, report, KID, in English or Italian) or <u>choose a file</u>",
+    opt_ai: "Findings written by Claude", opt_lang: "Report language", settings: "Settings", back_search: "Back to search",
+    new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download report",
+    ua_label: "Identity for SEC EDGAR (User-Agent)", ua_ph: "Jane Doe jane@example.com",
+    ua_help: "The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.",
+    key_label: "Anthropic API key (optional)", close: "Close", save: "Save",
+    error: (m) => `Something went wrong: ${m} — reload the page (Cmd+R / Ctrl+R). If it happens again, send this message.`,
+    need_key: "Add an Anthropic API key in Settings",
+    searching: (q) => `Searching for “${q}” on SEC EDGAR, filings.xbrl.org and Yahoo Finance…`,
+    g_sec: "US annual report", g_sec_src: "SEC EDGAR: latest 10-K, 20-F or 40-F", read_filing: "Reads the filing",
+    g_esef: "European annual report", g_esef_src: "ESEF from filings.xbrl.org", read_report: "Reads the report",
+    g_market: "Markets", g_market_src: "Sheet generated from the Yahoo Finance price history",
+    no_results: "No results. Try the ticker (e.g. MSFT, RACE.MI, BTC-USD) or upload the document directly.",
+    uploading: (n) => `Uploading ${n}`, preparing: "Preparing the document", not_started: "The reading did not start",
+    recent: "Recently read", key_saved: "Key saved. Leave empty to keep it; type “remove” to delete it.",
+    key_info: "Only needed for findings written by Claude. Everything else works without a key.", remove_word: "remove",
+    relang: (l) => l === "en" ? "Preparing the English report" : "Preparing the Italian report",
+  },
+  it: {
+    lead: "Un ragno legge un documento finanziario, cifra per cifra, e scrive il report mentre cammina.",
+    warn: "Questo browser non è supportato: Spider Analyst funziona solo con browser basati su Chromium (Chrome, Brave, Edge, Arc). Su Safari e Firefox il ragno non legge il documento. Apri <b>http://127.0.0.1:8765</b> in uno di quei browser, oppure avvia di nuovo Spider Analyst dal Terminale: lo apre da solo nel browser giusto.",
+    search_label: "Cerca uno strumento", search_ph: "Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, oro…", search_btn: "Cerca",
+    url_label: "Oppure incolla l'indirizzo di un documento (PDF, HTML, iXBRL)", read_btn: "Leggi", drop_aria: "Carica un file",
+    drop: "<b>Carica un documento</b><br>Trascina qui un PDF o HTML (bilancio, report, KID, in italiano o in inglese) o <u>scegli un file</u>",
+    opt_ai: "Osservazioni scritte da Claude", opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca",
+    new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica report",
+    ua_label: "Identificazione per SEC EDGAR (User-Agent)", ua_ph: "Nome Cognome nome@esempio.it",
+    ua_help: "La SEC chiede a chi scarica i bilanci di indicare un nome e un contatto. Resta su questo computer.",
+    key_label: "Chiave API Anthropic (facoltativa)", close: "Chiudi", save: "Salva",
+    error: (m) => `Qualcosa non ha funzionato: ${m} — ricarica la pagina (Cmd+R / Ctrl+R). Se si ripete, manda questo messaggio.`,
+    need_key: "Aggiungi una chiave API Anthropic nelle impostazioni",
+    searching: (q) => `Cerco «${q}» su SEC EDGAR, filings.xbrl.org e Yahoo Finance…`,
+    g_sec: "Bilancio annuale USA", g_sec_src: "SEC EDGAR: 10-K, 20-F o 40-F più recente", read_filing: "Legge il bilancio",
+    g_esef: "Relazione annuale europea", g_esef_src: "ESEF da filings.xbrl.org", read_report: "Legge la relazione",
+    g_market: "Mercati", g_market_src: "Scheda generata dallo storico prezzi Yahoo Finance",
+    no_results: "Nessun risultato. Prova con il ticker (es. MSFT, RACE.MI, BTC-USD) o carica direttamente il documento.",
+    uploading: (n) => `Carico ${n}`, preparing: "Preparo il documento", not_started: "La lettura non è partita",
+    recent: "Letti di recente", key_saved: "Chiave salvata. Lascia vuoto per non cambiarla; scrivi «rimuovi» per cancellarla.",
+    key_info: "Serve solo per le osservazioni scritte da Claude. Senza chiave tutto il resto funziona.", remove_word: "rimuovi",
+    relang: (l) => l === "en" ? "Preparo il report in inglese" : "Preparo il report in italiano",
+  },
+};
+const tr = (k, ...a) => { const v = UI[UI_LANG][k] ?? UI.en[k]; return typeof v === "function" ? v(...a) : v; };
+
+function applyUI() {
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = tr(el.dataset.i18n);
+  for (const el of document.querySelectorAll("[data-i18n-html]")) el.innerHTML = tr(el.dataset.i18nHtml);
+  for (const el of document.querySelectorAll("[data-i18n-ph]")) el.placeholder = tr(el.dataset.i18nPh);
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) el.setAttribute("aria-label", tr(el.dataset.i18nAria));
+  document.querySelector("#opt-lang").value = UI_LANG;          // the report follows the interface unless changed
+  document.documentElement.classList.add("ui-ready");
+}
+applyUI();
+
 // any unexpected error is shown on screen instead of leaving a still spider
 function showError(msg) {
   let bar = document.getElementById("errbar");
@@ -8,7 +72,7 @@ function showError(msg) {
     bar.id = "errbar";
     document.body.append(bar);
   }
-  bar.textContent = "Qualcosa non ha funzionato: " + msg + " — ricarica la pagina (Cmd+R). Se si ripete, manda questo messaggio.";
+  bar.textContent = tr("error", msg);
 }
 window.addEventListener("error", (e) => showError(e.message || String(e.error)));
 window.addEventListener("unhandledrejection", (e) => showError(e.reason?.message || String(e.reason)));
@@ -41,7 +105,7 @@ async function refreshStatus() {
   try { state.status = await api("/api/status"); } catch { state.status = null; }
   const ai = $("#opt-ai");
   ai.disabled = !state.status?.ai;
-  ai.parentElement.title = state.status?.ai ? "" : "Aggiungi una chiave API Anthropic nelle impostazioni";
+  ai.parentElement.title = state.status?.ai ? "" : tr("need_key");
   if (!state.status?.ai) ai.checked = false;
 }
 
@@ -52,7 +116,7 @@ $("#search-form").addEventListener("submit", async (e) => {
   if (!q) return;
   const seq = ++searchSeq;
   const box = $("#results");
-  box.innerHTML = `<p class="empty">Cerco «${esc(q)}» su SEC EDGAR, filings.xbrl.org e Yahoo Finance…</p>`;
+  box.innerHTML = `<p class="empty">${esc(tr("searching", q))}</p>`;
   let res;
   try { res = await api("/api/search?q=" + encodeURIComponent(q)); } catch (err) {
     box.innerHTML = `<p class="error">${esc(err.message)}</p>`; return;
@@ -63,13 +127,13 @@ $("#search-form").addEventListener("submit", async (e) => {
 
 function renderResults(res) {
   const parts = [];
-  if (res.sec.length) parts.push(group("Bilancio annuale USA", "SEC EDGAR: 10-K, 20-F o 40-F più recente", res.sec.map((c) =>
-    hit({ kind: "sec", query: c.ticker || String(c.cik) }, c.name, c.ticker, "Legge il bilancio"))));
-  if (res.esef.length) parts.push(group("Relazione annuale europea", "ESEF da filings.xbrl.org", res.esef.map((e) =>
-    hit({ kind: "esef", query: e.lei }, e.name, e.country, "Legge la relazione"))));
-  if (res.market.length) parts.push(group("Mercati", "Scheda generata dallo storico prezzi Yahoo Finance", res.market.map((m) =>
-    hit({ kind: "market", symbol: m.symbol }, m.name, m.symbol, `${m.type_it}${m.exchange ? " · " + m.exchange : ""}`))));
-  if (!parts.length) parts.push(`<p class="empty">Nessun risultato. Prova con il ticker (es. MSFT, RACE.MI, BTC-USD) o carica direttamente il documento.</p>`);
+  if (res.sec.length) parts.push(group(tr("g_sec"), tr("g_sec_src"), res.sec.map((c) =>
+    hit({ kind: "sec", query: c.ticker || String(c.cik) }, c.name, c.ticker, tr("read_filing")))));
+  if (res.esef.length) parts.push(group(tr("g_esef"), tr("g_esef_src"), res.esef.map((e) =>
+    hit({ kind: "esef", query: e.lei }, e.name, e.country, tr("read_report")))));
+  if (res.market.length) parts.push(group(tr("g_market"), tr("g_market_src"), res.market.map((m) =>
+    hit({ kind: "market", symbol: m.symbol }, m.name, m.symbol, `${m.type_label}${m.exchange ? " · " + m.exchange : ""}`))));
+  if (!parts.length) parts.push(`<p class="empty">${esc(tr("no_results"))}</p>`);
   for (const e of res.errors || []) parts.push(`<p class="note">${esc(e)}</p>`);
   return parts.join("");
 }
@@ -105,14 +169,14 @@ async function upload(f) {
   fd.append("file", f);
   fd.append("use_ai", $("#opt-ai").checked ? "true" : "false");
   fd.append("lang", $("#opt-lang").value);
-  show("loading"); loadingReset(`Carico ${f.name}`);
+  show("loading"); loadingReset(tr("uploading", f.name));
   try { const { job } = await api("/api/upload", { method: "POST", body: fd }); await follow(job); } catch (err) { loadingError(err.message); }
 }
 
 async function start(req) {
   req.ai = $("#opt-ai").checked;
   req.lang = $("#opt-lang").value;
-  show("loading"); loadingReset("Preparo il documento");
+  show("loading"); loadingReset(tr("preparing"));
   try { const { job } = await postJSON("/api/analyze", req); await follow(job); } catch (err) { loadingError(err.message); }
 }
 
@@ -122,7 +186,7 @@ function loadingReset(step) {
 }
 function loadingError(msg) {
   $("#load-error").textContent = msg; $("#load-error").hidden = false; $("#load-back").hidden = false;
-  $("#load-step").textContent = "La lettura non è partita";
+  $("#load-step").textContent = tr("not_started");
 }
 $("#load-back").addEventListener("click", () => { show("home"); loadRecent(); });
 
@@ -140,7 +204,7 @@ async function follow(job) {
 async function loadRecent() {
   try {
     const list = await api("/api/recent");
-    $("#recent").innerHTML = list.length ? `<h3>Letti di recente</h3>` + list.map((a) =>
+    $("#recent").innerHTML = list.length ? `<h3>${esc(tr("recent"))}</h3>` + list.map((a) =>
       `<button class="hit" type="button" data-open="${esc(a.id)}"><b>${esc(a.title)}</b><span class="what">${esc(a.subtitle)}</span></button>`).join("") : "";
   } catch { /* server not ready */ }
 }
@@ -150,15 +214,14 @@ $("#open-settings").addEventListener("click", async () => {
   await refreshStatus();
   $("#set-ua").value = state.status?.sec_ua_custom ? state.status.sec_user_agent : "";
   $("#set-key").value = "";
-  $("#key-state").textContent = state.status?.ai_key ? "Chiave salvata. Lascia vuoto per non cambiarla; scrivi «rimuovi» per cancellarla." :
-    "Serve solo per le osservazioni scritte da Claude. Senza chiave tutto il resto funziona.";
+  $("#key-state").textContent = state.status?.ai_key ? tr("key_saved") : tr("key_info");
   $("#set-msg").hidden = true;
   $("#settings").showModal();
 });
 $("#set-save").addEventListener("click", async () => {
   const body = { sec_user_agent: $("#set-ua").value.trim() };
   const k = $("#set-key").value.trim();
-  if (k === "rimuovi") body.anthropic_key = "";
+  if (k.toLowerCase() === tr("remove_word") || k.toLowerCase() === "remove") body.anthropic_key = "";
   else if (k) body.anthropic_key = k;
   try { await postJSON("/api/settings", body); await refreshStatus(); $("#settings").close(); }
   catch (err) { $("#set-msg").textContent = err.message; $("#set-msg").hidden = false; }
@@ -215,7 +278,7 @@ $("#lang2").addEventListener("change", async () => {
   $("#opt-lang").value = lang;
   if (!a || a.lang === lang) return;
   state.director?.stop();
-  show("loading"); loadingReset(lang === "en" ? "Preparing the English report" : "Preparo il report in italiano");
+  show("loading"); loadingReset(tr("relang", lang));
   try { const { job } = await postJSON("/api/relang", { id: a.id, lang }); await follow(job); } catch (err) { loadingError(err.message); }
 });
 
@@ -432,7 +495,7 @@ class Director {
     this.cam = { x: 0, y: Math.max(0, this.start0.y - 200) };
     this.spider.place(this.start0.x, this.start0.y, Math.PI / 2);
     this.playing = true;
-    $("#play").textContent = "Pausa";
+    $("#play").textContent = tr("pause");
     this.last = performance.now();
     this.raf = requestAnimationFrame((t) => this.frame(t));
   }
@@ -440,13 +503,13 @@ class Director {
   stop() {
     cancelAnimationFrame(this.raf);
     this.playing = false;
-    $("#play").textContent = "Avvia";
+    $("#play").textContent = tr("play");
   }
 
   toggle() {
     if (this.done) return this.restart();
     if (this.playing) return this.stop();
-    this.playing = true; $("#play").textContent = "Pausa";
+    this.playing = true; $("#play").textContent = tr("pause");
     this.last = performance.now();
     this.raf = requestAnimationFrame((t) => this.frame(t));
   }
@@ -791,7 +854,7 @@ class Director {
     await sleep(40);
     box.querySelector(".card").classList.add("in");
     this.stop();
-    $("#play").textContent = "Rivedi";
+    $("#play").textContent = tr("replay");
   }
 }
 

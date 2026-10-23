@@ -130,7 +130,7 @@ def test_statement_labels_en_it():
 def test_english_pdf_annual_report():
     pytest.importorskip("reportlab")
     import make_pdf_en  # noqa: F401  (writes fixtures/annual_en.pdf)
-    a = pipeline.run({"kind": "upload", "data": (FIX / "annual_en.pdf").read_bytes(), "name": "annual_en.pdf"}, lambda *_: None)
+    a = pipeline.run({"kind": "upload", "data": (FIX / "annual_en.pdf").read_bytes(), "name": "annual_en.pdf", "lang": "it"}, lambda *_: None)
     card = {t["key"]: t for t in a["card"]}
     assert a["title"] == "Northwind Instruments Inc."
     assert card["revenue"]["yoy_display"] == "+11,2%" and card["eps_diluted"]["display"] == "$4,12"
@@ -145,7 +145,7 @@ def test_english_html_table_report():
     <tr><td>Operating profit</td><td>90,000</td><td>70,000</td></tr>
     <tr><td>Profit for the year</td><td>60,000</td><td>45,000</td></tr>
     <tr><td>Total assets</td><td>900,000</td><td>850,000</td></tr></table></body></html>"""
-    a = pipeline.run({"kind": "upload", "data": html, "name": "report.html"}, lambda *_: None)
+    a = pipeline.run({"kind": "upload", "data": html, "name": "report.html", "lang": "it"}, lambda *_: None)
     assert a["cols"][1] == ["2025", "2024"]
     card = {t["key"]: t for t in a["card"]}
     assert a["currency"] == "EUR" and card["revenue"]["display"] == "€500 mln" and card["revenue"]["yoy_display"] == "+25,0%"
@@ -176,3 +176,12 @@ def test_market_sheet_english():
         r = market.build(series())
     assert r["subtitle"].startswith("Cryptocurrency") and "market sheet" in r["subtitle"]
     assert "Rendimento" not in "".join(r["pages"]) and "Monthly returns" in r["pages"][2]
+
+
+def test_report_language_defaults_to_system_language(monkeypatch):
+    monkeypatch.setenv("SPIDER_LANG", "it")
+    a = pipeline.run({"kind": "upload", "data": (FIX / "sec_10k.htm").read_bytes(), "name": "x.htm"}, lambda *_: None)
+    assert a["lang"] == "it"
+    monkeypatch.setenv("SPIDER_LANG", "en")
+    b = pipeline.run({"kind": "upload", "data": (FIX / "sec_10k.htm").read_bytes(), "name": "x.htm"}, lambda *_: None)
+    assert b["lang"] == "en"

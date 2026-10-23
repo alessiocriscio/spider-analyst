@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="it">
+<html lang="__UI__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Spider Analyst</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='18' r='8' fill='black' stroke='%23ff2e88' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='11' y='4' width='10' height='24' rx='2' fill='black' stroke='%233b6cff' stroke-width='2'/%3E%3Ccircle cx='16' cy='4' r='3' fill='%234fe3ff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/app.css?v=__V__">
 </head>
 <body>
@@ -14,35 +14,35 @@
   <div class="home-inner">
     <canvas id="hero-spider" width="220" height="150" aria-hidden="true"></canvas>
     <h1>Spider Analyst</h1>
-    <p class="lead">Un ragno legge un documento finanziario, cifra per cifra, e scrive il report mentre cammina.</p>
-    <p id="browser-warn" class="warn" hidden>Questo browser non è supportato: Spider Analyst funziona solo con browser basati su
-      Chromium (Chrome, Brave, Edge, Arc). Su Safari e Firefox il ragno non legge il documento. Apri <b>http://127.0.0.1:8765</b>
-      in uno di quei browser, oppure avvia di nuovo Spider Analyst dal Terminale: lo apre da solo nel browser giusto.</p>
+    <p class="lead" data-i18n="lead">A spider reads a financial document, figure by figure, and writes the report as it walks.</p>
+    <p id="browser-warn" class="warn" data-i18n-html="warn" hidden>This browser is not supported: Spider Analyst only works in
+      Chromium-based browsers (Chrome, Brave, Edge, Arc). In Safari and Firefox the spider does not read the document. Open
+      <b>http://127.0.0.1:8765</b> in one of those browsers, or start Spider Analyst again from the terminal: it opens the right browser by itself.</p>
 
     <form id="search-form" autocomplete="off">
-      <label for="q" class="sr">Cerca uno strumento</label>
-      <input id="q" type="search" placeholder="Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, oro…" autofocus>
-      <button type="submit">Cerca</button>
+      <label for="q" class="sr" data-i18n="search_label">Search for an instrument</label>
+      <input id="q" type="search" data-i18n-ph="search_ph" placeholder="Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, gold…" autofocus>
+      <button type="submit" data-i18n="search_btn">Search</button>
     </form>
     <div id="results" aria-live="polite"></div>
 
     <div class="alt">
       <form id="url-form" autocomplete="off">
-        <label for="url">Oppure incolla l'indirizzo di un documento (PDF, HTML, iXBRL)</label>
-        <div class="row"><input id="url" type="url" placeholder="https://…/kid.pdf"><button type="submit">Leggi</button></div>
+        <label for="url" data-i18n="url_label">Or paste the address of a document (PDF, HTML, iXBRL)</label>
+        <div class="row"><input id="url" type="url" placeholder="https://…/report.pdf"><button type="submit" data-i18n="read_btn">Read</button></div>
       </form>
-      <div id="drop" tabindex="0" role="button" aria-label="Carica un file">
-        <span><b>Carica un documento</b><br>Trascina qui un PDF o HTML (bilancio, report, KID, in italiano o in inglese) o <u>scegli un file</u></span>
+      <div id="drop" tabindex="0" role="button" data-i18n-aria="drop_aria" aria-label="Upload a file">
+        <span data-i18n-html="drop"><b>Upload a document</b><br>Drop a PDF or HTML file here (statements, report, KID, in English or Italian) or <u>choose a file</u></span>
         <input id="file" type="file" accept=".pdf,.htm,.html,.xhtml,.xml" hidden>
       </div>
     </div>
 
     <div class="opts">
-      <label><input id="opt-ai" type="checkbox"> Osservazioni scritte da Claude</label>
-      <label>Lingua del report
-        <select id="opt-lang"><option value="it" selected>Italiano</option><option value="en">English</option></select>
+      <label><input id="opt-ai" type="checkbox"> <span data-i18n="opt_ai">Findings written by Claude</span></label>
+      <label><span data-i18n="opt_lang">Report language</span>
+        <select id="opt-lang"><option value="en">English</option><option value="it">Italiano</option></select>
       </label>
-      <button id="open-settings" type="button" class="link">Impostazioni</button>
+      <button id="open-settings" type="button" class="link" data-i18n="settings">Settings</button>
     </div>
 
     <div id="recent"></div>
@@ -52,27 +52,27 @@
 <!-- Loading -->
 <section id="loading" class="screen" hidden>
   <div class="load-box">
-    <p id="load-step">Preparo il documento</p>
+    <p id="load-step"></p>
     <div class="bar"><i id="load-bar"></i></div>
     <p id="load-error" class="error" hidden></p>
-    <button id="load-back" type="button" hidden>Torna alla ricerca</button>
+    <button id="load-back" type="button" hidden data-i18n="back_search">Back to search</button>
   </div>
 </section>
 
 <!-- Reading -->
 <section id="reader" class="screen" hidden>
   <header id="topbar">
-    <button id="back" type="button" title="Nuova analisi">‹ Nuova analisi</button>
+    <button id="back" type="button" data-i18n="new_analysis">‹ New analysis</button>
     <div class="ctrl">
-      <button id="play" type="button">Avvia</button>
-      <button id="restart" type="button">Ricomincia</button>
-      <select id="lang2" aria-label="Lingua del report"><option value="it">Italiano</option><option value="en">English</option></select>
-      <button id="download" type="button">Scarica report</button>
+      <button id="play" type="button" data-i18n="play">Play</button>
+      <button id="restart" type="button" data-i18n="restart">Restart</button>
+      <select id="lang2" data-i18n-aria="opt_lang" aria-label="Report language"><option value="en">English</option><option value="it">Italiano</option></select>
+      <button id="download" type="button" data-i18n="download">Download report</button>
     </div>
   </header>
   <div id="frame">
     <div id="stage">
-      <div id="doc-layer"><iframe id="doc" title="Documento" sandbox="allow-same-origin"></iframe></div>
+      <div id="doc-layer"><iframe id="doc" title="Document" sandbox="allow-same-origin"></iframe></div>
       <canvas id="marks"></canvas>
       <canvas id="spider"></canvas>
       <div id="finale" hidden></div>
@@ -81,14 +81,14 @@
       <div class="r-head">
         <h2 id="r-title"></h2>
         <p id="r-sub"></p>
-        <p id="r-count"><b id="r-n">0</b> <span id="r-of">di</span> <span id="r-m">0</span> <span id="r-read">cifre lette</span><br><small id="r-pages"></small></p>
+        <p id="r-count"><b id="r-n">0</b> <span id="r-of">of</span> <span id="r-m">0</span> <span id="r-read">figures read</span><br><small id="r-pages"></small></p>
       </div>
       <div id="r-section">
         <h3 id="r-sec-title"></h3>
         <table id="r-table"><thead></thead><tbody></tbody></table>
       </div>
       <div id="r-other">
-        <h3 id="r-other-title">Altre cifre lette dal ragno</h3>
+        <h3 id="r-other-title">Other figures the spider read</h3>
         <ul id="r-other-list"></ul>
       </div>
       <p id="r-warn"></p>
@@ -99,19 +99,19 @@
 <!-- Settings -->
 <dialog id="settings">
   <form method="dialog" id="settings-form">
-    <h2>Impostazioni</h2>
-    <label>Identificazione per SEC EDGAR (User-Agent)
-      <input id="set-ua" type="text" placeholder="Nome Cognome nome@esempio.it">
-      <small>La SEC chiede a chi scarica i bilanci di indicare un nome e un contatto. Resta su questo Mac.</small>
+    <h2 data-i18n="settings">Settings</h2>
+    <label><span data-i18n="ua_label">Identity for SEC EDGAR (User-Agent)</span>
+      <input id="set-ua" type="text" data-i18n-ph="ua_ph" placeholder="Jane Doe jane@example.com">
+      <small data-i18n="ua_help">The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.</small>
     </label>
-    <label>Chiave API Anthropic (facoltativa)
+    <label><span data-i18n="key_label">Anthropic API key (optional)</span>
       <input id="set-key" type="password" placeholder="sk-ant-…" autocomplete="off">
       <small id="key-state"></small>
     </label>
     <p id="set-msg" class="error" hidden></p>
     <div class="row end">
-      <button value="cancel" type="submit" class="link">Chiudi</button>
-      <button id="set-save" type="button">Salva</button>
+      <button value="cancel" type="submit" class="link" data-i18n="close">Close</button>
+      <button id="set-save" type="button" data-i18n="save">Save</button>
     </div>
   </form>
 </dialog>

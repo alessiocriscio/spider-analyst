@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import ai, financials as F, generic, ixbrl, market, sources, statements
-from .i18n import t, using
+from .i18n import system_lang, t, ui, using
 
 DOCS = sources.CACHE / "docs"
 Progress = Callable[[str, float], None]
@@ -89,13 +89,14 @@ def _fact_fmt(f: ixbrl.Fact, units: dict) -> str:
 
 
 def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progress) -> dict:
-    progress("Lettura del documento iXBRL", 0.35)
+    progress(ui("Lettura del documento iXBRL", "Reading the inline XBRL document"), 0.35)
     doc = ixbrl.parse(data, url)
-    progress("Estrazione delle cifre", 0.55)
+    progress(ui("Estrazione delle cifre", "Extracting the figures"), 0.55)
     x = F.extract(doc)
     m, cur, per = x["metrics"], x["currency"], x["periods"]
     if not m:
-        raise sources.SourceError("Nessuna cifra di bilancio riconosciuta nei tag XBRL di questo documento.")
+        raise sources.SourceError(ui("Nessuna cifra di bilancio riconosciuta nei tag XBRL di questo documento.",
+                                     "No financial figures recognised in this document's XBRL tags."))
     d = F.derive(m)
     checks = F.checks(m)
     finds = F.findings(m, d, cur)
@@ -144,7 +145,7 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
               if per.end else doc.info.get("DocumentPeriodEndDate", ""))
     ai_used = False
     if use_ai and ai.available():
-        progress("Claude scrive le osservazioni", 0.75)
+        progress(ui("Claude scrive le osservazioni", "Claude is writing the findings"), 0.75)
         data = _ai_data(m, d, cur)
         try:
             obs = ai.observations(f"{company} {form} {period}", data)
@@ -210,9 +211,9 @@ def _ai_data(m: dict, d: dict, cur: str) -> dict:
 # ---------------------------------------------------------------- market sheet
 
 def from_market(symbol: str, meta: dict, progress: Progress) -> dict:
-    progress("Scarico lo storico prezzi", 0.3)
+    progress(ui("Scarico lo storico prezzi", "Downloading the price history"), 0.3)
     hist = sources.yahoo_history(symbol)
-    progress("Calcolo rendimenti e rischio", 0.6)
+    progress(ui("Calcolo rendimenti e rischio", "Computing returns and risk"), 0.6)
     r = market.build(hist)
     n = len(r["pages"])
     titles = {h["page"]: h["text"] for h in reversed(r["headings"])}
@@ -240,13 +241,14 @@ def from_market(symbol: str, meta: dict, progress: Progress) -> dict:
 
 def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai: bool, progress: Progress) -> dict:
     is_pdf = data[:5] == b"%PDF-"
-    progress("Lettura delle pagine", 0.35)
+    progress(ui("Lettura delle pagine", "Reading the pages"), 0.35)
     if is_pdf:
         g = generic.pdf_document(data, DOCS / meta["id"] / "img", f"/api/doc/{meta['id']}/img")
     else:
         g = generic.html_document(data, url)
     if not g["facts"]:
-        raise sources.SourceError("Non ho trovato cifre leggibili in questo documento (un PDF scansionato senza testo?).")
+        raise sources.SourceError(ui("Non ho trovato cifre leggibili in questo documento (un PDF scansionato senza testo?).",
+                                     "No readable figures in this document (a scanned PDF without text?)."))
     facts = {f["id"]: {"label": f["label"], "display": f["display"], "value_fmt": f["display"], "page": f["page"],
                        "key": f["key"], "metric": None, "role": "cur"} for f in g["facts"]}
     first_heading = next((h["text"] for h in g["headings"] if h["page"] == g["pages"][0]["n"]), "")
@@ -255,7 +257,7 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
     kind_label = t("Documento", "Document")
     finds, card, ai_used = [], [], False
     if use_ai and ai.available():
-        progress("Claude sceglie le cifre importanti", 0.65)
+        progress(ui("Claude sceglie le cifre importanti", "Claude is picking the key figures"), 0.65)
         top = sorted(g["facts"], key=lambda f: -f["score"])[:120]
         cands = {str(f["id"]): {"label": f["label"], "display": f["display"], "pages": [f["page"]]} for f in top}
         texts = {p["n"]: t for p, t in zip(g["pages"], g["page_text"])}
@@ -350,7 +352,7 @@ def is_ixbrl(data: bytes) -> bool:
 
 def run(req: dict, progress: Progress) -> dict:
     """req: {"kind": "sec"|"esef"|"market"|"url"|"upload"|"upload_ref", "lang": "it"|"en", ...}"""
-    lang = req.get("lang") if req.get("lang") in ("it", "en") else "it"
+    lang = req.get("lang") if req.get("lang") in ("it", "en") else system_lang()
     if req["kind"] == "upload":
         # keep the file so the report can be rebuilt in the other language
         sha = hashlib.sha256(req["data"]).hexdigest()
@@ -363,7 +365,7 @@ def run(req: dict, progress: Progress) -> dict:
     if req["kind"] == "upload_ref":
         up = DOCS / "uploads" / f"{req.get('sha', '')}.bin"
         if not re.fullmatch(r"[0-9a-f]{64}", req.get("sha", "")) or not up.exists():
-            raise sources.SourceError("Il file caricato non è più disponibile: caricalo di nuovo.")
+            raise sources.SourceError(ui("Il file caricato non è più disponibile: caricalo di nuovo.", "The uploaded file is no longer available: upload it again."))
         data = up.read_bytes()
     else:
         data = None
@@ -379,7 +381,7 @@ def run(req: dict, progress: Progress) -> dict:
 def relang(aid: str, lang: str, progress: Progress) -> dict:
     a = load(aid)
     if not a or not a.get("req"):
-        raise sources.SourceError("Analisi non trovata: rifai la ricerca.")
+        raise sources.SourceError(ui("Analisi non trovata: rifai la ricerca.", "Analysis not found: search again."))
     return run({**a["req"], "lang": lang}, progress)
 
 
@@ -387,22 +389,22 @@ def _run(req: dict, data: Optional[bytes], lang: str, progress: Progress) -> dic
     use_ai = bool(req.get("ai"))
     kind = req["kind"]
     if kind == "sec":
-        progress("Cerco il bilancio su SEC EDGAR", 0.08)
+        progress(ui("Cerco il bilancio su SEC EDGAR", "Looking for the filing on SEC EDGAR"), 0.08)
         f = sources.sec_latest(req["query"], req.get("form")) if not req.get("url") else {"url": req["url"], "form": req.get("form", "")}
         aid = _id("sec", f["url"], use_ai, lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit
-        progress(f"Scarico il {f.get('form') or 'documento'} da sec.gov", 0.18)
+        progress(ui(f"Scarico il {f.get('form') or 'documento'} da sec.gov", f"Downloading the {f.get('form') or 'document'} from sec.gov"), 0.18)
         data = sources.fetch(f["url"], ttl=None)
         meta = {"id": aid, "url": f["url"], "form": f.get("form", ""), "company": f.get("company", ""), "source_label": "SEC EDGAR"}
         return from_ixbrl(data, f["url"], meta, use_ai, progress)
     if kind == "esef":
-        progress("Cerco la relazione ESEF su filings.xbrl.org", 0.08)
+        progress(ui("Cerco la relazione ESEF su filings.xbrl.org", "Looking for the ESEF report on filings.xbrl.org"), 0.08)
         f = sources.esef_latest(req["query"]) if not req.get("url") else {"url": req["url"]}
         aid = _id("esef", f["url"], use_ai, lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit
-        progress("Scarico la relazione annuale (può pesare decine di MB)", 0.18)
+        progress(ui("Scarico la relazione annuale (può pesare decine di MB)", "Downloading the annual report (it can be tens of MB)"), 0.18)
         data = sources.fetch(f["url"], ttl=None)
         meta = {"id": aid, "url": f["url"], "form": "ESEF", "company": f.get("company", ""), "source_label": "ESEF · filings.xbrl.org"}
         return from_ixbrl(data, f["url"], meta, use_ai, progress)
@@ -415,11 +417,11 @@ def _run(req: dict, data: Optional[bytes], lang: str, progress: Progress) -> dic
     if kind == "url":
         url = req["url"].strip()
         if not re.match(r"^https?://", url):
-            raise sources.SourceError("Indirizzo non valido: deve iniziare con http:// o https://")
+            raise sources.SourceError(ui("Indirizzo non valido: deve iniziare con http:// o https://", "Invalid address: it must start with http:// or https://"))
         aid = _id("url", url, use_ai, lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit
-        progress("Scarico il documento", 0.15)
+        progress(ui("Scarico il documento", "Downloading the document"), 0.15)
         data = sources.fetch(url, ttl=7 * sources.DAY)
         meta = {"id": aid, "url": url, "source_label": re.sub(r"^https?://([^/]+).*$", r"\1", url)}
         if is_ixbrl(data):
@@ -433,7 +435,7 @@ def _run(req: dict, data: Optional[bytes], lang: str, progress: Progress) -> dic
         if is_ixbrl(data):
             return from_ixbrl(data, None, meta, use_ai, progress)
         return from_generic(data, req.get("name", "documento"), None, meta, use_ai, progress)
-    raise sources.SourceError(f"Tipo di richiesta sconosciuto: {kind}")
+    raise sources.SourceError(ui(f"Tipo di richiesta sconosciuto: {kind}", f"Unknown request type: {kind}"))
 
 
 def _today() -> str:

@@ -6,7 +6,8 @@ every number cites the page it comes from.
 
 A from-scratch rebuild of the idea shown in @buildwithbrock's videos. It contains none of his code.
 
-The app interface is in Italian; the report can be produced in Italian or English.
+The interface is in English, or in Italian when the operating system's language is Italian (`SPIDER_LANG=en` or
+`SPIDER_LANG=it` forces one). The report can be produced in English or Italian; it starts in the interface language.
 
 ## Requirements
 
@@ -31,7 +32,7 @@ Close the terminal window (or press Ctrl+C) to stop it.
 - **macOS blocks the double-click** ("cannot be verified"): use `python3 launch.py` from Terminal, or go to
   *System Settings → Privacy & Security*, click *Open Anyway* at the bottom and try again.
 - **Windows shows "Windows protected your PC"**: click *More info → Run anyway*, or use `py launch.py`.
-- Options: `SPIDER_PORT=9000` changes the port, `SPIDER_BROWSER="Brave Browser"` (macOS app name, or an
+- Options: `SPIDER_PORT=9000` changes the port, `SPIDER_LANG=en|it` forces the interface language, `SPIDER_BROWSER="Brave Browser"` (macOS app name, or an
   executable path elsewhere) forces a browser, `--no-browser` starts only the server.
 
 ## What it reads
@@ -41,7 +42,7 @@ Close the terminal window (or press Ctrl+C) to stop it.
 | US-listed companies (MSFT, NVDA, …) | Latest 10-K, 20-F or 40-F in inline XBRL | SEC EDGAR |
 | European companies (Ferrari, ENI, …) | ESEF annual report in inline XBRL | filings.xbrl.org |
 | Crypto, indices, currencies, commodities, ETFs, funds (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | A generated market sheet: chart, calendar-year and monthly returns, volatility, drawdowns | Yahoo Finance |
-| Any other document, in English or Italian: annual report or statements as PDF/HTML, KID, prospectus, factsheet, whitepaper | The file you upload (*Carica un documento*) or the URL you paste | Your file / URL |
+| Any other document, in English or Italian: annual report or statements as PDF/HTML, KID, prospectus, factsheet, whitepaper | The file you upload (*Upload a document*) or the URL you paste | Your file / URL |
 
 In inline XBRL filings every figure is an XBRL tag, so its value and exact position are known — no guessing.
 In untagged PDF/HTML the figures are the ones printed on the page. In financial statements (English or Italian)
@@ -60,7 +61,7 @@ for XBRL filings. For other documents (KID, prospectus) it lists the main figure
   liquidity, leverage — deterministic calculations on the document's figures.
 - **Language**: Italian or English, chosen on the home page or while reading (the report is regenerated:
   findings, checks, labels, number formats — `$120B` / `$120 mld`).
-- **Download**: *Scarica report* saves a self-contained HTML file with the card, findings, checks and every figure
+- **Download**: *Download report* saves a self-contained HTML file with the card, findings, checks and every figure
   read with its page. To get a PDF, open it and use File → Print → Save as PDF.
 
 ## The spider
@@ -77,7 +78,7 @@ with the financial statements and the key figures).
 
 ## Claude (optional)
 
-With an Anthropic API key (*Impostazioni*, or `ANTHROPIC_API_KEY`) you can tick *Osservazioni scritte da Claude*
+With an Anthropic API key (*Settings*, or `ANTHROPIC_API_KEY`) you can tick *Findings written by Claude*
 (model `claude-opus-5-5`). Claude only receives the figures already read, each with an id; any observation with a
 number that is not among the figures it cites is dropped. On PDFs it picks the important figures among those
 found on the pages. Everything else works without a key, which is stored in `~/.spider-analyst/anthropic_key`.

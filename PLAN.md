@@ -14,7 +14,7 @@ financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-bas
 - [x] `analyst/market.py` — generated market sheet for instruments without statements
 - [x] `analyst/generic.py` — PDF (page image + word layer) and plain HTML
 - [x] `analyst/ai.py` — optional Claude pass, limited to figures already read, numbers validated
-- [x] `analyst/i18n.py` — report language (Italian / English)
+- [x] `analyst/i18n.py` — interface language (system) and report language (Italian / English)
 - [x] `analyst/pipeline.py` — one analysis format for the web app, sanitised `view.html`
 - [x] `server.py`, `web/` — spider animation, pacing, live report, finale, report download
 - [x] `launch.py` + `Start Spider Analyst.command` / `.bat` — venv, dependencies, server, Chromium browser
@@ -58,7 +58,8 @@ Every figure cites its page; the occurrence highlighted is the one on the page w
 - Pacing: every figure on the shown pages is visited; the pace scales with their number (≈20 s to ≈2 min).
 - Report panel: "N of M figures read", pages read, table of the section being read, other figures with page.
 - Finale: key findings one by one, then the card (4 tiles with YoY change and page, 3 findings, figures and checks).
-- Interface in Italian; report in Italian or English; downloadable self-contained HTML report.
+- Interface in English, Italian when the OS language is Italian (server-side detection: macOS AppleLanguages,
+  Windows UI language, LANG elsewhere); report in English or Italian; downloadable self-contained HTML report.
 
 ## Claude (optional)
 

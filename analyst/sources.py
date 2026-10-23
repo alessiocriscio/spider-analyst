@@ -21,6 +21,8 @@ from urllib.parse import quote, urlencode
 
 import httpx
 
+from .i18n import system_lang, ui
+
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = Path(os.environ.get("SPIDER_DATA_DIR", ROOT / ".data"))
 CONFIG_FILE = Path.home() / ".spider-analyst" / "config.json"
@@ -80,17 +82,17 @@ def fetch(url: str, *, ttl: Optional[float] = DAY, max_bytes: int = 120_000_000)
     try:
         with client().stream("GET", url, headers=headers) as r:
             if r.status_code >= 400:
-                raise SourceError(f"{host} ha risposto {r.status_code} per {url}")
+                raise SourceError(ui(f"{host} ha risposto {r.status_code} per {url}", f"{host} answered {r.status_code} for {url}"))
             chunks, size = [], 0
             for c in r.iter_bytes():
                 size += len(c)
                 if size > max_bytes:
-                    raise SourceError(f"Documento troppo grande (> {max_bytes // 1_000_000} MB): {url}")
+                    raise SourceError(ui(f"Documento troppo grande (> {max_bytes // 1_000_000} MB): {url}", f"Document too large (> {max_bytes // 1_000_000} MB): {url}"))
                 chunks.append(c)
     except httpx.HTTPError as e:
         if p.exists():                                  # offline: stale cache is better than nothing
             return p.read_bytes()
-        raise SourceError(f"Impossibile raggiungere {host}: {e}") from e
+        raise SourceError(ui(f"Impossibile raggiungere {host}: {e}", f"Cannot reach {host}: {e}")) from e
     data = b"".join(chunks)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".tmp")
@@ -106,7 +108,7 @@ def fetch_json(url: str, ttl: Optional[float] = DAY):
     try:
         return json.loads(fetch(url, ttl=ttl))
     except ValueError as e:
-        raise SourceError(f"Risposta non valida da {url}") from e
+        raise SourceError(ui(f"Risposta non valida da {url}", f"Invalid response from {url}")) from e
 
 
 # ---------------------------------------------------------------- SEC EDGAR
@@ -180,7 +182,7 @@ def sec_filings(cik: int, forms=SEC_FORMS) -> list[dict]:
 def sec_latest(query: str, form: Optional[str] = None) -> dict:
     c = sec_lookup(query)
     if not c:
-        raise SourceError(f"Nessuna società SEC trovata per «{query}».")
+        raise SourceError(ui(f"Nessuna società SEC trovata per «{query}».", f"No SEC company found for \"{query}\"."))
     filings = [f for f in sec_filings(c["cik"]) if f["ixbrl"]]
     if form:
         filings = [f for f in filings if f["form"] == form]
@@ -188,7 +190,8 @@ def sec_latest(query: str, form: Optional[str] = None) -> dict:
         annual = [f for f in filings if f["form"] in ("10-K", "20-F", "40-F")]
         filings = annual or filings
     if not filings:
-        raise SourceError(f"Nessun bilancio iXBRL disponibile su EDGAR per {c.get('name') or query}.")
+        raise SourceError(ui(f"Nessun bilancio iXBRL disponibile su EDGAR per {c.get('name') or query}.",
+                              f"No inline XBRL filing available on EDGAR for {c.get('name') or query}."))
     return filings[0]
 
 
@@ -241,11 +244,11 @@ def esef_filings(lei: str) -> list[dict]:
 def esef_latest(query: str) -> dict:
     ents = esef_entities(query)
     if not ents:
-        raise SourceError(f"Nessun emittente ESEF trovato per «{query}» su filings.xbrl.org.")
+        raise SourceError(ui(f"Nessun emittente ESEF trovato per «{query}» su filings.xbrl.org.", f"No ESEF issuer found for \"{query}\" on filings.xbrl.org."))
     ent = ents[0]
     fil = esef_filings(ent["lei"])
     if not fil:
-        raise SourceError(f"Nessuna relazione ESEF pubblicata per {ent['name']}.")
+        raise SourceError(ui(f"Nessuna relazione ESEF pubblicata per {ent['name']}.", f"No ESEF report published for {ent['name']}."))
     best = fil[0]
     best["company"] = ent["name"]
     return best
@@ -256,6 +259,10 @@ def esef_latest(query: str) -> dict:
 QUOTE_TYPES = {
     "EQUITY": "Azione", "ETF": "ETF", "MUTUALFUND": "Fondo", "INDEX": "Indice", "CURRENCY": "Valuta",
     "CRYPTOCURRENCY": "Crypto", "FUTURE": "Future", "OPTION": "Opzione", "MONEYMARKET": "Monetario",
+}
+QUOTE_TYPES_EN = {
+    "EQUITY": "Stock", "ETF": "ETF", "MUTUALFUND": "Fund", "INDEX": "Index", "CURRENCY": "Currency",
+    "CRYPTOCURRENCY": "Crypto", "FUTURE": "Future", "OPTION": "Option", "MONEYMARKET": "Money market",
 }
 
 
@@ -325,9 +332,11 @@ def yahoo_json(path: str, params: dict, ttl: float):
     if p.exists():                                    # stale cache beats an error
         return json.loads(p.read_bytes())
     if last == "429":
-        raise SourceError("Yahoo Finance sta limitando le richieste (429). Riprova tra qualche minuto, "
-                          "oppure scrivi direttamente il simbolo (es. BTC-USD, ^GSPC, EURUSD=X).")
-    raise SourceError(f"Yahoo Finance non risponde ({last}).")
+        raise SourceError(ui("Yahoo Finance sta limitando le richieste (429). Riprova tra qualche minuto, "
+                             "oppure scrivi direttamente il simbolo (es. BTC-USD, ^GSPC, EURUSD=X).",
+                             "Yahoo Finance is rate-limiting requests (429). Try again in a few minutes, "
+                             "or type the symbol directly (e.g. BTC-USD, ^GSPC, EURUSD=X)."))
+    raise SourceError(ui(f"Yahoo Finance non risponde ({last}).", f"Yahoo Finance is not responding ({last})."))
 
 
 def looks_like_symbol(q: str) -> bool:
@@ -340,9 +349,9 @@ def fallback_symbols(query: str) -> list[dict]:
     out = []
     sym = ALIASES.get(q.lower())
     if sym:
-        out.append({"symbol": sym, "name": q.title(), "type": "", "type_it": "Scheda di mercato", "exchange": ""})
+        out.append({"symbol": sym, "name": q.title(), "type": "", "type_label": ui("Scheda di mercato", "Market sheet"), "exchange": ""})
     if looks_like_symbol(q) and q.upper() != sym:
-        out.append({"symbol": q.upper(), "name": q.upper(), "type": "", "type_it": "Scheda di mercato", "exchange": ""})
+        out.append({"symbol": q.upper(), "name": q.upper(), "type": "", "type_label": ui("Scheda di mercato", "Market sheet"), "exchange": ""})
     return out
 
 
@@ -360,7 +369,7 @@ def yahoo_search(query: str, limit: int = 10) -> list[dict]:
             "symbol": sym,
             "name": r.get("longname") or r.get("shortname") or sym,
             "type": r.get("quoteType", ""),
-            "type_it": QUOTE_TYPES.get(r.get("quoteType", ""), r.get("typeDisp") or r.get("quoteType", "")),
+            "type_label": (QUOTE_TYPES if system_lang() == "it" else QUOTE_TYPES_EN).get(r.get("quoteType", ""), r.get("typeDisp") or r.get("quoteType", "")),
             "exchange": r.get("exchDisp") or r.get("exchange", ""),
         })
     return out
@@ -373,7 +382,8 @@ def yahoo_history(symbol: str, years: int = 10) -> dict:
     res = (data.get("chart") or {}).get("result") or []
     if not res:
         err = (data.get("chart") or {}).get("error") or {}
-        raise SourceError(f"Nessuno storico prezzi per {symbol}: {err.get('description', 'simbolo sconosciuto')}")
+        raise SourceError(ui(f"Nessuno storico prezzi per {symbol}: {err.get('description', 'simbolo sconosciuto')}",
+                              f"No price history for {symbol}: {err.get('description', 'unknown symbol')}"))
     r = res[0]
     ts = r.get("timestamp") or []
     q = (r.get("indicators", {}).get("quote") or [{}])[0]
@@ -386,7 +396,7 @@ def yahoo_history(symbol: str, years: int = 10) -> dict:
             continue
         points.append((datetime.fromtimestamp(t, tz=timezone.utc).date().isoformat(), float(c)))
     if len(points) < 20:
-        raise SourceError(f"Storico prezzi troppo corto per {symbol}.")
+        raise SourceError(ui(f"Storico prezzi troppo corto per {symbol}.", f"Price history too short for {symbol}."))
     meta = r.get("meta", {})
     return {
         "symbol": meta.get("symbol", symbol),

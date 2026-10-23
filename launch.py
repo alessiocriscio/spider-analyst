@@ -24,6 +24,9 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from analyst.i18n import ui  # noqa: E402  (standard library only: works before the venv exists)
+
 ROOT = Path(__file__).resolve().parent
 PORT = int(os.environ.get("SPIDER_PORT", "8765"))
 URL = "http://127.0.0.1:%d/" % PORT
@@ -83,7 +86,7 @@ def find_python():
 
 def ensure_venv(py):
     if not VPY.exists():
-        say("First start: preparing the Python environment (only once)...")
+        say(ui("Primo avvio: preparo l'ambiente Python (solo la prima volta)...", "First start: preparing the Python environment (only once)..."))
         if py == ["uv"]:
             subprocess.run(["uv", "venv", str(VENV), "--python", "3.12", "--seed"], check=True)
         else:
@@ -92,7 +95,7 @@ def ensure_venv(py):
     stamp = VENV / ".requirements.sha"
     digest = hashlib.sha256(req.read_bytes()).hexdigest()
     if not stamp.exists() or stamp.read_text().strip() != digest:
-        say("Installing dependencies (1-2 minutes the first time)...")
+        say(ui("Installo le dipendenze (1-2 minuti la prima volta)...", "Installing dependencies (1-2 minutes the first time)..."))
         subprocess.run([str(VPY), "-m", "pip", "install", "-q", "--upgrade", "pip"], check=False)
         subprocess.run([str(VPY), "-m", "pip", "install", "-q", "-r", str(req)], check=True)
         stamp.write_text(digest)
@@ -103,10 +106,12 @@ def ask_sec_identity():
         return
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     say()
-    say("The SEC asks whoever downloads US filings to identify themselves (name and email).")
-    say("It is stored only on this computer, in %s. Leave empty for a generic identity." % CONFIG)
+    say(ui("La SEC chiede a chi scarica i bilanci americani di identificarsi (nome ed email).",
+           "The SEC asks whoever downloads US filings to identify themselves (name and email)."))
+    say(ui("Resta salvato solo su questo computer, in %s. Lascia vuoto per un'identità generica.",
+           "It is stored only on this computer, in %s. Leave empty for a generic identity.") % CONFIG)
     try:
-        ua = input("Name and email (e.g. Jane Doe jane@example.com): ").strip()
+        ua = input(ui("Nome ed email (es. Mario Rossi mario@esempio.it): ", "Name and email (e.g. Jane Doe jane@example.com): ")).strip()
     except EOFError:
         ua = ""
     CONFIG.write_text(json.dumps({"sec_user_agent": ua} if ua else {}, indent=2))
@@ -212,8 +217,10 @@ def open_browser():
     except OSError:
         ok = False
     if not ok:
-        say("No Chromium-based browser found (Chrome, Brave, Edge, Arc): opening the default browser.")
-        say("Spider Analyst needs a Chromium-based browser; Safari and Firefox are not supported.")
+        say(ui("Nessun browser Chromium trovato (Chrome, Brave, Edge, Arc): apro il browser predefinito.",
+               "No Chromium-based browser found (Chrome, Brave, Edge, Arc): opening the default browser."))
+        say(ui("Spider Analyst richiede un browser basato su Chromium; Safari e Firefox non sono supportati.",
+               "Spider Analyst needs a Chromium-based browser; Safari and Firefox are not supported."))
         webbrowser.open(URL)
 
 
@@ -225,40 +232,44 @@ def main():
         return 0
     no_browser = "--no-browser" in sys.argv
     if server_up():
-        say("Spider Analyst is already running at %s" % URL)
+        say(ui("Spider Analyst è già in esecuzione su %s", "Spider Analyst is already running at %s") % URL)
         if not no_browser:
             open_browser()
         return 0
     py = find_python()
     if not py:
-        say("Python 3.10 or newer is required: %s" % PY_DOWNLOAD)
+        say(ui("Serve Python 3.10 o più recente: %s", "Python 3.10 or newer is required: %s") % PY_DOWNLOAD)
         if WIN:
-            say('On Windows, tick "Add python.exe to PATH" in the installer.')
+            say(ui('Su Windows, nel programma di installazione spunta "Add python.exe to PATH".',
+                   'On Windows, tick "Add python.exe to PATH" in the installer.'))
         else:
-            say("On a Mac you can also run:  brew install python")
+            say(ui("Su Mac puoi anche usare:  brew install python", "On a Mac you can also run:  brew install python"))
         webbrowser.open(PY_DOWNLOAD)
         return 1
     try:
         ensure_venv(py)
     except subprocess.CalledProcessError:
-        say("Setting up the environment failed: check the internet connection and try again.")
+        say(ui("Preparazione dell'ambiente non riuscita: controlla la connessione e riprova.",
+               "Setting up the environment failed: check the internet connection and try again."))
         return 1
     ask_sec_identity()
-    say("Starting Spider Analyst at %s  (Ctrl+C or closing this window stops it)" % URL)
+    say(ui("Avvio Spider Analyst su %s  (Ctrl+C o chiudere questa finestra lo ferma)",
+           "Starting Spider Analyst at %s  (Ctrl+C or closing this window stops it)") % URL)
     proc = subprocess.Popen([str(VPY), str(ROOT / "server.py")], cwd=str(ROOT))
     for _ in range(80):
         if server_up() or proc.poll() is not None:
             break
         time.sleep(0.25)
     if proc.poll() is not None:
-        say("The server did not start (is port %d in use? set SPIDER_PORT to change it)." % PORT)
+        say(ui("Il server non è partito (la porta %d è occupata? Cambiala con SPIDER_PORT).",
+               "The server did not start (is port %d in use? set SPIDER_PORT to change it).") % PORT)
         return 1
     if not no_browser:
         open_browser()
     try:
         return proc.wait()
     except KeyboardInterrupt:
-        say("\nStopping...")
+        say(ui("\nChiusura...", "\nStopping..."))
         proc.terminate()
         try:
             proc.wait(timeout=10)
