@@ -1,97 +1,117 @@
 # Spider Analyst
 
-Un ragno legge un documento finanziario sul Mac: cammina sulle parole, le cifre che legge si illuminano e
-finiscono in un report che si compone in diretta. Alla fine mostra le osservazioni chiave e una scheda
-riassuntiva in cui ogni numero indica la pagina da cui viene.
+A spider reads a financial document on your computer: it walks over the words, the figures it reads light up
+and flow into a report that builds up live, and at the end it shows the key findings and a summary card where
+every number cites the page it comes from.
 
-È una ricostruzione scritta da zero dell'idea vista nei video di @buildwithbrock. Non contiene il suo codice.
+A from-scratch rebuild of the idea shown in @buildwithbrock's videos. It contains none of his code.
 
-## Avvio
+The app interface is in Italian; the report can be produced in Italian or English.
 
-1. Serve Python 3.10 o più recente: `python3 --version`. Se manca, installalo da
-   [python.org](https://www.python.org/downloads/macos/) oppure con `brew install python`.
-2. Avvia dal Terminale (funziona sempre, anche se macOS blocca il doppio clic):
-   apri **Terminale**, scrivi `bash ` (con lo spazio), trascina nella finestra il file
-   **`Avvia Spider Analyst.command`** e premi Invio.
-   In alternativa: doppio clic sul file; se macOS dice che non può verificarlo, vai in
-   **Impostazioni di Sistema → Privacy e sicurezza**, in fondo clicca **Apri comunque**, poi riprova.
-   Al primo avvio prepara l'ambiente (`.venv`), installa le dipendenze e chiede un nome e un'email per la SEC
-   (puoi lasciare vuoto).
-3. Si apre il browser su `http://127.0.0.1:8765`.
+## Requirements
 
-Da terminale: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python server.py`.
+- **Python 3.10 or newer** — [python.org/downloads](https://www.python.org/downloads/) (on Windows tick
+  *Add python.exe to PATH*; on a Mac `brew install python` also works).
+- **A Chromium-based browser**: Chrome, Brave, Edge, Arc, Vivaldi or Opera.
+  **Safari and Firefox are not supported** — the page loads but the spider does not read the document.
+  The launcher opens the app in a Chromium browser on its own (your default one if it is Chromium-based).
+- macOS, Windows or Linux.
 
-## Cosa legge
+## Start
 
-| Cosa cerchi | Documento che legge il ragno | Fonte |
+| System | Double-click | Or from a terminal, in the project folder |
 |---|---|---|
-| Azioni USA ed emittenti esteri quotati in USA (MSFT, AAPL, …) | Ultimo 10-K, 20-F o 40-F in iXBRL | SEC EDGAR |
-| Società europee (Ferrari, ENI, …) | Relazione annuale ESEF in iXBRL | filings.xbrl.org |
-| Crypto, indici, valute, materie prime, ETF, fondi (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | Scheda di mercato generata: grafico, rendimenti annuali e mensili, volatilità, drawdown | Yahoo Finance |
-| Qualsiasi altro documento, in italiano o in inglese: bilancio o annual report in PDF/HTML, KID, prospetto, factsheet, whitepaper | Il file che carichi (riquadro “Carica un documento”) o l'URL che incolli | Tuo file / URL |
+| macOS / Linux | `Start Spider Analyst.command` | `python3 launch.py` |
+| Windows | `Start Spider Analyst.bat` | `py launch.py` |
 
-Nei bilanci iXBRL ogni cifra è un tag XBRL: valore e posizione esatta sono certi, nessuna lettura “a occhio”.
-Su PDF e HTML senza tag le cifre sono quelle scritte sulla pagina. Nei bilanci (in inglese o in italiano) il ragno
-riconosce le voci dalle etichette di riga — Revenue / Ricavi, Net income / Utile netto, Diluted EPS, Net cash
-provided by operating activities, Purchases of property, plant and equipment… — legge le colonne anno corrente
-e precedente e la scala (“in millions”, “in migliaia di euro”), e calcola scheda, controlli e osservazioni come
-per i bilanci XBRL. Per altri documenti (KID, prospetti) elenca le cifre principali, o le sceglie Claude.
+The first start creates a virtual environment (`.venv`), installs the dependencies (1–2 minutes) and asks for a
+name and email to identify yourself to the SEC (optional). Then the app opens at `http://127.0.0.1:8765`.
+Close the terminal window (or press Ctrl+C) to stop it.
 
-## Lingua e report scaricabile
+- **macOS blocks the double-click** ("cannot be verified"): use `python3 launch.py` from Terminal, or go to
+  *System Settings → Privacy & Security*, click *Open Anyway* at the bottom and try again.
+- **Windows shows "Windows protected your PC"**: click *More info → Run anyway*, or use `py launch.py`.
+- Options: `SPIDER_PORT=9000` changes the port, `SPIDER_BROWSER="Brave Browser"` (macOS app name, or an
+  executable path elsewhere) forces a browser, `--no-browser` starts only the server.
 
-- **Lingua del report**: Italiano o English, nella pagina iniziale o in alto durante la lettura (cambiandola il report
-  viene rigenerato: osservazioni, controlli, etichette, formati dei numeri — $120B invece di $120 mld). Le etichette
-  copiate da un documento non strutturato (es. un KID in italiano) restano quelle del documento.
-- **Scarica report**: salva un file HTML autonomo con scheda, osservazioni, controlli e tutte le cifre lette con la
-  pagina; per un PDF aprilo e usa File → Stampa → Salva come PDF.
+## What it reads
 
-## Il ragno
+| You look for | The document the spider reads | Source |
+|---|---|---|
+| US-listed companies (MSFT, NVDA, …) | Latest 10-K, 20-F or 40-F in inline XBRL | SEC EDGAR |
+| European companies (Ferrari, ENI, …) | ESEF annual report in inline XBRL | filings.xbrl.org |
+| Crypto, indices, currencies, commodities, ETFs, funds (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | A generated market sheet: chart, calendar-year and monthly returns, volatility, drawdowns | Yahoo Finance |
+| Any other document, in English or Italian: annual report or statements as PDF/HTML, KID, prospectus, factsheet, whitepaper | The file you upload (*Carica un documento*) or the URL you paste | Your file / URL |
 
-Corpo nero con bordo blu e testa ciano, otto zampe ciano a tre segmenti con giunture e piedi rosa che si posano sulle
-parole (due gruppi alterni, mai più di quattro zampe sollevate), filo di seta alle spalle, raggi rosa e ciano che
-“pingano” parole e numeri davanti a lui, evidenziazioni al neon (contorni, riempimenti, parole ingrandite, strisce).
-
-## Velocità
-
-Automatica: il ragno legge sempre **tutte** le cifre delle pagine che apre e regola il ritmo sul loro numero
-(circa 20 secondi per un documento corto, fino a circa 2 minuti per uno lungo). Il contatore “N di M cifre lette”
-conta le cifre di quelle pagine; sotto è indicato quali pagine del documento sono state lette.
+In inline XBRL filings every figure is an XBRL tag, so its value and exact position are known — no guessing.
+In untagged PDF/HTML the figures are the ones printed on the page. In financial statements (English or Italian)
+the spider recognises the rows from their labels — Revenue / Ricavi, Net income / Utile netto, Diluted EPS, Net
+cash provided by operating activities, Purchases of property, plant and equipment… — reads the current and prior
+year columns and the scale ("in millions", "in migliaia di euro"), and computes the card, checks and findings as
+for XBRL filings. For other documents (KID, prospectus) it lists the main figures, or Claude picks them.
 
 ## Report
 
-- **Scheda (bilanci)**: ricavi, utile netto, EPS diluito, free cash flow (flusso operativo − capex), ognuno con
-  variazione annua e pagina.
-- **Controlli aritmetici**: margine lordo = ricavi − costo del venduto; attivo = passivo + patrimonio netto;
-  ante imposte − imposte ≈ utile netto; EPS × azioni diluite ≈ utile netto.
-- **Osservazioni**: crescita, margini, conversione in cassa, ritorno agli azionisti, copertura interessi,
-  debito in scadenza contro cassa, liquidità, leva. Calcoli deterministici sulle cifre del documento.
+- **Card (financial statements)**: revenue, net income, diluted EPS, free cash flow (operating cash flow − capex),
+  each with its year-on-year change and page.
+- **Arithmetic checks**: gross profit = revenue − cost of revenue; assets = liabilities + equity;
+  pre-tax income − taxes ≈ net income; diluted EPS × diluted shares ≈ net income.
+- **Findings**: growth, margins, cash conversion, shareholder returns, interest coverage, debt due vs cash,
+  liquidity, leverage — deterministic calculations on the document's figures.
+- **Language**: Italian or English, chosen on the home page or while reading (the report is regenerated:
+  findings, checks, labels, number formats — `$120B` / `$120 mld`).
+- **Download**: *Scarica report* saves a self-contained HTML file with the card, findings, checks and every figure
+  read with its page. To get a PDF, open it and use File → Print → Save as PDF.
 
-## Claude (facoltativo)
+## The spider
 
-Con una chiave API Anthropic (Impostazioni, oppure `ANTHROPIC_API_KEY`) puoi spuntare
-“Osservazioni scritte da Claude” (modello `claude-opus-5-5`). Claude riceve solo le cifre già lette, ognuna con
-un identificativo; ogni osservazione che contiene un numero non presente tra le cifre citate viene scartata.
-Sui PDF sceglie le cifre importanti tra quelle trovate sulle pagine. Senza chiave tutto il resto funziona.
-La chiave resta in `~/.spider-analyst/anthropic_key` (permessi 600).
+Narrow black body with a blue outline and a cyan head, eight cyan legs of three segments with pink joints and feet
+that land on words (two alternating sets, never more than four legs in the air), a silk line trailing behind,
+pink and cyan pings to the words and numbers ahead of it, and neon highlights (outlines, fills, enlarged words,
+rotated strips).
 
-## Dati e privacy
+It always reads **every** figure on the pages it opens and adapts its pace to how many there are (about
+20 seconds for a short document, up to about 2 minutes for a long one). The "N of M figures read" counter counts
+the figures on those pages, and the panel lists which pages of the document were read (the cover and the pages
+with the financial statements and the key figures).
 
-Il server ascolta solo su `127.0.0.1`. Documenti e risposte vengono messi in cache in `.data/`.
-L'identificazione per la SEC è in `~/.spider-analyst/config.json`; il default è generico, nessuna email viene
-inviata se non la inserisci tu.
+## Claude (optional)
 
-## Limiti noti
+With an Anthropic API key (*Impostazioni*, or `ANTHROPIC_API_KEY`) you can tick *Osservazioni scritte da Claude*
+(model `claude-opus-5-5`). Claude only receives the figures already read, each with an id; any observation with a
+number that is not among the figures it cites is dropped. On PDFs it picks the important figures among those
+found on the pages. Everything else works without a key, which is stored in `~/.spider-analyst/anthropic_key`.
 
-- Le cifre di bilancio dipendono dai tag dell'emittente: concetti rari o personalizzati possono mancare
-  (la scheda mostra “—”).
-- Il free cash flow usa il capex in immobilizzazioni materiali; alcune società includono anche le immateriali.
-- Yahoo Finance non ha un'API ufficiale e a volte limita le richieste (errore 429): l'app riprova con un cookie di
-  sessione e sull'altro server; se ancora non risponde, scrivi direttamente il simbolo (es. BTC-USD) e riprova più tardi.
+## Data and privacy
 
-## Test
+The server listens on `127.0.0.1` only. Documents and responses are cached in `.data/`. The SEC identity is in
+`~/.spider-analyst/config.json`; the default is generic and no email is sent unless you enter one.
+
+## Known limits
+
+- Financial figures depend on the issuer's tags: rare or custom concepts may be missing (the card shows "—").
+- Free cash flow uses capex on property, plant and equipment; some companies also include intangibles.
+- Yahoo Finance has no official API and sometimes rate-limits (HTTP 429): the app retries with a session
+  cookie and on the second host; if it still fails, type the symbol directly (e.g. BTC-USD) and try again later.
+
+## Project layout
 
 ```
-.venv/bin/pip install pytest reportlab
+launch.py                     cross-platform launcher (venv, dependencies, server, Chromium browser)
+Start Spider Analyst.command  macOS/Linux double-click wrapper
+Start Spider Analyst.bat      Windows double-click wrapper
+server.py                     FastAPI server (localhost only)
+analyst/                      sources, iXBRL parser, financials, statements, market sheet, PDF/HTML, Claude, i18n
+web/                          interface, spider animation, live report
+tests/                        offline tests on synthetic documents and simulated APIs
+```
+
+## Tests
+
+```
+.venv/bin/pip install pytest reportlab        # Windows: .venv\Scripts\pip install pytest reportlab
 .venv/bin/python -m pytest -q
 ```
-I test usano documenti sintetici (società e numeri inventati) e non richiedono rete.
+
+The tests use synthetic documents (made-up companies and numbers) and simulated SEC, filings.xbrl.org and Yahoo
+responses; they need no network.

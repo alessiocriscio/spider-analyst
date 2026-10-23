@@ -878,6 +878,10 @@ function hero() {
   requestAnimationFrame(loop);
 }
 
+// the reader relies on Chromium behaviour; Safari and Firefox get a clear notice instead of a silent spider
+const isChromium = !!navigator.userAgentData || /\b(Chrome|Chromium|Edg|OPR|Brave)\//.test(navigator.userAgent);
+if (!isChromium) $("#browser-warn").hidden = false;
+
 refreshStatus();
 loadRecent();
 hero();

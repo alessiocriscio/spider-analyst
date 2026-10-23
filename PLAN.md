@@ -1,60 +1,68 @@
-# Spider Analyst — piano di lavoro
+# Spider Analyst — design notes
 
-Ricostruzione (scritta da zero) dello strumento visto nei video TikTok di @buildwithbrock ("Wall Street's newest analyst is a spider"):
-un ragno animato "legge" un documento finanziario pagina per pagina, le zampe camminano sulle parole, le cifre lette si
-illuminano e finiscono in un report live; alla fine compaiono le osservazioni chiave e una scheda riassuntiva.
-Requisito dell'utente: deve funzionare su **qualsiasi strumento finanziario** e girare in locale su macOS.
+A from-scratch rebuild of the tool shown in @buildwithbrock's videos ("Wall Street's newest analyst is a spider"):
+an animated spider reads a financial document page by page, its legs walk on the words, the figures it reads light
+up and flow into a live report; at the end come the key findings and a summary card. It must work for **any
+financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-based browser.
 
-## Stato
+## Status
 
-- [x] `analyst/ixbrl.py` — parser iXBRL (pagine, fatti `data-f`, titoli `data-h`, etichetta di riga, CSS filtrato)
-- [x] `analyst/sources.py` — SEC EDGAR, ESEF, Yahoo Finance, cache su disco
-- [x] `analyst/financials.py` — metriche us-gaap/ifrs-full, periodi, derivati, controlli, osservazioni, scheda
-- [x] `analyst/market.py` — scheda di mercato generata
-- [x] `analyst/generic.py` — PDF (immagine + strato di parole) e HTML senza tag
-- [x] `analyst/ai.py` — Claude opzionale, solo cifre già lette, validazione numerica
-- [x] `analyst/pipeline.py` — formato unico per l'interfaccia, `view.html` sanificato
-- [x] `server.py`, `web/` — ragno IK su canvas, regia, report live, finale
-- [x] `Avvia Spider Analyst.command`, `README.md`, test offline (`tests/`)
-- [ ] Prova con dati reali (MSFT 10-K, Ferrari ESEF, BTC-USD): la sessione cloud di sviluppo non raggiungeva
-      sec.gov / filings.xbrl.org / Yahoo (proxy 403). Da verificare sul Mac.
+- [x] `analyst/ixbrl.py` — inline XBRL parser (pages, `data-f` facts, `data-h` headings, row labels, filtered CSS)
+- [x] `analyst/sources.py` — SEC EDGAR, ESEF (filings.xbrl.org), Yahoo Finance (cookie + crumb, retries), disk cache
+- [x] `analyst/financials.py` — us-gaap / ifrs-full metrics, periods, ratios, checks, findings, card
+- [x] `analyst/statements.py` — untagged statements (English / Italian row labels → metrics)
+- [x] `analyst/market.py` — generated market sheet for instruments without statements
+- [x] `analyst/generic.py` — PDF (page image + word layer) and plain HTML
+- [x] `analyst/ai.py` — optional Claude pass, limited to figures already read, numbers validated
+- [x] `analyst/i18n.py` — report language (Italian / English)
+- [x] `analyst/pipeline.py` — one analysis format for the web app, sanitised `view.html`
+- [x] `server.py`, `web/` — spider animation, pacing, live report, finale, report download
+- [x] `launch.py` + `Start Spider Analyst.command` / `.bat` — venv, dependencies, server, Chromium browser
+- [x] Offline tests (`tests/`): synthetic documents, simulated APIs, launcher browser choice
+- [ ] Real-data run (MSFT 10-K, Ferrari ESEF, BTC-USD) on the user's machine: the cloud dev session could not
+      reach sec.gov / filings.xbrl.org / Yahoo.
+- [ ] Safari / Firefox: not supported (the app shows a notice); only Chromium-based browsers are tested.
 
-## Fonti dati (verificate)
+## Data sources
 
-| Strumento | Documento letto dal ragno | Fonte |
+| Instrument | Document the spider reads | Source |
 |---|---|---|
-| Azioni USA / emittenti esteri SEC | 10-K, 10-Q, 20-F, 40-F (iXBRL) | `data.sec.gov/submissions/CIK##########.json`, `www.sec.gov/Archives/...`, `www.sec.gov/files/company_tickers.json` |
-| Azioni UE/UK | Relazione annuale ESEF (iXBRL, ifrs-full) | `filings.xbrl.org/api/entities?filter=...`, `/api/entities/{LEI}/filings` → `report_url` |
-| ETF, fondi, obbligazioni, crypto, qualsiasi PDF | KID, prospetto, whitepaper, factsheet caricato o da URL | upload / URL |
-| Crypto, indici, valute, materie prime, ETF | Scheda di mercato generata (grafico, rendimenti annuali/mensili, rischio) | Yahoo `query1.finance.yahoo.com/v8/finance/chart/{sym}`, ricerca `/v1/finance/search` |
+| SEC registrants | 10-K, 20-F, 40-F (iXBRL) | `www.sec.gov/files/company_tickers.json`, `data.sec.gov/submissions/CIK##########.json`, `www.sec.gov/Archives/edgar/data/{cik}/{accession}/{doc}` |
+| EU/UK companies | ESEF annual report (iXBRL, ifrs-full) | `filings.xbrl.org/api/entities?filter=[ilike]`, `/api/entities/{LEI}/filings` → `report_url` |
+| Crypto, indices, FX, commodities, ETFs, funds | Generated market sheet | Yahoo `/v8/finance/chart/{symbol}`, search `/v1/finance/search` |
+| Anything else | Uploaded or linked PDF / HTML | upload / URL |
 
-- SEC richiede un User-Agent con contatto: configurabile (`SPIDER_SEC_UA` o `~/.spider-analyst/config.json`).
-  Non inviare l'email dell'utente senza che lo chieda: il launcher la chiede al primo avvio, default generico.
-- Struttura pagine: SEC = figli di `<body>` separati da `<hr style="page-break-after:always">`; ESEF = `div.pageView` (pagine HTML da PDF, ~35 MB, CSS con immagini base64 → filtrare il CSS sulle classi usate dalle pagine mostrate).
+- SEC requires a User-Agent with a contact: `SPIDER_SEC_UA` or `~/.spider-analyst/config.json`; the launcher asks
+  once, the default is generic.
+- Page structure: SEC = `<body>` children split by `<hr style="page-break-after:always">`; ESEF = `div.pageView`
+  (HTML pages rendered from PDF, tens of MB, CSS with base64 images → CSS filtered to the classes on shown pages).
 
-## Metriche (concetti us-gaap e ifrs-full con fallback)
+## Metrics (us-gaap and ifrs-full concepts with fallbacks)
 
-Conto economico: ricavi, costo del venduto, margine lordo, R&S, utile operativo, utile ante imposte, imposte, utile netto, EPS diluito, interessi passivi.
-Stato patrimoniale: cassa, attivo corrente, totale attivo, passivo corrente, totale passivo (o derivato), patrimonio netto, debito.
-Flussi di cassa: flusso operativo, capex, buyback, dividendi pagati, compensi in azioni. Altro: debito in scadenza entro 12 mesi.
-Periodo: contesto non dimensionale con fine = `DocumentPeriodEndDate`; corrente vs anno precedente.
-Derivati: FCF, margini, crescita YoY, copertura interessi ((ante imposte + interessi)/interessi), debito/attivo, moltiplicatore del capitale, % FCF restituita agli azionisti, current ratio.
-Controlli: lordo = ricavi − costo; attivo = passivo + PN; ante imposte − imposte ≈ utile netto; EPS × azioni diluite ≈ utile netto.
-Ogni cifra cita la pagina del documento. Occorrenza da evidenziare: quella sulla pagina con più fatti (prospetti contabili).
+Income statement: revenue, cost of revenue, gross profit, R&D, operating income, pre-tax income, taxes, net income,
+diluted EPS, interest expense. Balance sheet: cash, current assets, total assets, current liabilities, total
+liabilities (or derived), equity, debt. Cash flow: operating cash flow, capex, buybacks, dividends, stock-based
+compensation. Debt due within 12 months.
 
-## Interfaccia
+Period: the non-dimensional context ending on `DocumentPeriodEndDate`; current vs prior year.
+Derived: FCF, margins, YoY growth, interest coverage, debt/assets, equity multiplier, % of FCF returned, current ratio.
+Checks: gross = revenue − cost; assets = liabilities + equity; pre-tax − taxes ≈ net income; EPS × shares ≈ net income.
+Every figure cites its page; the occurrence highlighted is the one on the page with most facts (the statements).
 
-- Documento in iframe same-origin a piena altezza (sandbox senza script per i filing; pdf.js per i PDF), scalato; overlay in coordinate documento.
-- Ragno su canvas: corpo nero con bordo rosa, 8 zampe a due segmenti (IK), andatura alternata, piedi agganciati alle parole (`caretRangeFromPoint`), fili rosa verso le cifre lette, riquadri rosa sulle parole toccate, evidenziazione gialla delle etichette di riga, pillole rosa sui titoli.
-- Regia: itinerario ordinato per posizione (cifre, titoli, cifre nel testo), durata totale configurabile, camera che segue il ragno.
-- Pannello report: "N di M cifre mostrate", tabella della sezione in lettura (anno corrente / precedente), "altre cifre lette dal ragno" con pagina.
-- Finale: osservazioni chiave una alla volta, poi scheda (4 riquadri con variazione YoY e pagina, 3 osservazioni, riga "N cifre · N controlli").
-- Modalità video 9:16 + registrazione (getDisplayMedia + CropTarget, MediaRecorder; conversione MP4 con ffmpeg se serve).
-- Interfaccia in italiano, etichette report IT/EN.
+## Interface
 
-## Claude (opzionale)
+- Document in a full-height same-origin iframe (sandboxed, no scripts), scaled; overlays in document coordinates.
+- Spider (canvas), modelled on the reference clips: narrow outlined body with a head dot, three-segment legs solved
+  with FABRIK, alternating gait with at most four legs in the air, feet planted on words, trailing silk line,
+  pink/cyan pings, neon highlights; body follows the itinerary with a damped spring.
+- Pacing: every figure on the shown pages is visited; the pace scales with their number (≈20 s to ≈2 min).
+- Report panel: "N of M figures read", pages read, table of the section being read, other figures with page.
+- Finale: key findings one by one, then the card (4 tiles with YoY change and page, 3 findings, figures and checks).
+- Interface in Italian; report in Italian or English; downloadable self-contained HTML report.
 
-SDK `anthropic` (installato 2.1.0), modello `claude-opus-5-5`, `output_config` con `format` json_schema ed `effort`,
-`client.beta.messages.create(..., betas=["server-side-fallback-2026-07-01"], fallbacks="default")`, gestire `stop_reason == "refusal"`.
-Chiave da `ANTHROPIC_API_KEY` o `~/.spider-analyst/anthropic_key`; senza chiave tutto funziona in modo deterministico.
-I numeri nelle osservazioni generate devono corrispondere a valori calcolati, e le cifre estratte devono comparire testualmente sulla pagina citata, altrimenti si scartano.
+## Claude (optional)
+
+SDK `anthropic` 2.x, model `claude-opus-5-5`, `output_config` with a `json_schema` format and `effort`,
+`client.beta.messages.create(..., betas=["server-side-fallback-2026-07-01"], fallbacks="default")`, refusals handled.
+Key from `ANTHROPIC_API_KEY` or `~/.spider-analyst/anthropic_key`; without a key everything is deterministic.
+Numbers in generated observations must match the figures they cite, otherwise the observation is dropped.

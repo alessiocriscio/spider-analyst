@@ -95,7 +95,10 @@ def fetch(url: str, *, ttl: Optional[float] = DAY, max_bytes: int = 120_000_000)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".tmp")
     tmp.write_bytes(data)
-    tmp.replace(p)
+    try:
+        tmp.replace(p)
+    except OSError:          # Windows: the cached file is open in another thread; keep the old copy
+        tmp.unlink(missing_ok=True)
     return data
 
 
