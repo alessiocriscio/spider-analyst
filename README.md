@@ -49,7 +49,7 @@ In untagged PDF/HTML the figures are the ones printed on the page. In financial 
 the spider recognises the rows from their labels — Revenue / Ricavi, Net income / Utile netto, Diluted EPS, Net
 cash provided by operating activities, Purchases of property, plant and equipment… — reads the current and prior
 year columns and the scale ("in millions", "in migliaia di euro"), and computes the card, checks and findings as
-for XBRL filings. For other documents (KID, prospectus) it lists the main figures, or Claude picks them.
+for XBRL filings. For other documents (KID, prospectus) it lists the main figures, or the AI model picks them.
 
 ## Report
 
@@ -115,7 +115,7 @@ launch.py                     cross-platform launcher (venv, dependencies, serve
 Start Spider Analyst.command  macOS/Linux double-click wrapper
 Start Spider Analyst.bat      Windows double-click wrapper
 server.py                     FastAPI server (localhost only)
-analyst/                      sources, iXBRL parser, financials, statements, market sheet, PDF/HTML, Claude, i18n
+analyst/                      sources, iXBRL parser, financials, statements, market sheet, PDF/HTML, AI providers, PDF export, i18n
 web/                          interface, spider animation, live report
 tests/                        offline tests on synthetic documents and simulated APIs
 ```
