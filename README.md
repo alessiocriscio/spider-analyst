@@ -80,7 +80,9 @@ Like a spider on a wall, it climbs straight down the middle of each page, head f
 from a silk line, and reaches each figure with its pink line. Narrow black body with a blue outline and a cyan head, eight cyan legs of three segments with pink joints and feet
 that land on words (two alternating sets, never more than four legs in the air),
 pink and cyan pings to the words and numbers ahead of it, and neon highlights (outlines, fills, enlarged words,
-rotated strips).
+rotated strips). It moves like a real spider: quick dashes that brake hard, with short freezes on longer stretches,
+a body that sways and stretches with its stride, a pulse and a strike of the front legs when it grabs a figure,
+front legs that keep tapping the words while it reads, and a silk line that swings as it pulls on it.
 
 It always reads **every** figure on the pages it opens and adapts its pace to how many there are (about
 12 seconds for a short document, up to about 75 seconds for a long one). The "N of M figures read" counter counts

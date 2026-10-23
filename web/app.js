@@ -302,6 +302,14 @@ const I18N = {
 const L = () => I18N[state.analysis?.lang] || I18N.it;
 
 // pacing: base seconds per stop, compressed for long documents, never by skipping figures
+// progress along a hop, like a real spider: quick dashes that brake hard, with a short freeze
+// between them on longer hops (monotonic, so it still only ever goes down)
+function dash(u, dist) {
+  const n = Math.max(1, Math.min(3, Math.round(dist / 140)));
+  const i = Math.min(n - 1, Math.floor(u * n)), v = Math.min(1, (u * n - i) / 0.72);
+  return (i + 1 - (1 - v) ** 3) / n;
+}
+
 const BASE = { fig: 0.28, key: 0.7, head: 0.45, walk: 0.034, minHop: 0.12, maxHop: 1.4 };
 const targetSeconds = (n) => Math.max(12, Math.min(75, 8 + n * 0.12));   // every figure, quicker
 
@@ -574,7 +582,7 @@ class Director {
       const g = tl[i];
       if (t < g.t0) return prev;
       if (t < g.t1) {
-        const u = (t - g.t0) / (g.t1 - g.t0), e = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+        const e = dash((t - g.t0) / (g.t1 - g.t0), Math.abs(g.p.y - prev.y) / this.U);
         return { x: prev.x + (g.p.x - prev.x) * e, y: prev.y + (g.p.y - prev.y) * e };
       }
       if (t < g.t2) return g.p;
@@ -765,6 +773,7 @@ class Director {
     if (s.label) this.marks.push({ kind: "label", r: s.label, t: this.clock });
     // the pink line to the figure being read
     this.pings.push({ to: { x: s.r.x + s.r.w / 2, y: s.r.y + s.r.h / 2 }, t0: this.clock, dur: Math.max(0.3, 0.6 / this.pace.mul), color: "#ff2d8f", width: 2 });
+    this.spider.pounce();
     this.count++;
     $("#r-n").textContent = this.count.toLocaleString(L().locale);
     this.report(s);

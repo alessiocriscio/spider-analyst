@@ -3,6 +3,8 @@
 // three rigid segments with pink joints and feet, a silk line trailing behind.
 // Feet stay planted on words until they fall about a stride behind, then step,
 // two alternating sets of four, never more than four in the air.
+// To look alive it sways with its gait, its body pulses when it grabs a figure, and
+// while it reads its front legs tap the words around it.
 // Everything is in document pixels; U scales the spider to the text it reads.
 
 export const COLORS = {
@@ -28,12 +30,17 @@ export class Spider {
     this.speed = 1;
     this.silkAnchor = null;
     this.t = 0;
+    this.phase = 0;                       // gait phase, advances with distance travelled
+    this.yaw = this.heading;              // heading plus the gait sway (drawing and hips only)
+    this.pulse = 0;                       // body pulse when a figure is grabbed
+    this.nextTap = 0;
   }
 
   place(x, y, heading = Math.PI / 2) {
     this.x = x; this.y = y; this.heading = heading;
     this.vel = { x: 0, y: 0 }; this.bv = { x: 0, y: 0 };
     this.anim = {}; this.joints = []; this.lastStep = []; this.silkAnchor = null;
+    this.yaw = heading; this.pulse = 0; this.nextTap = 0;
     this.feet = LEG_ANG.map((_, i) => this.snap(this.rest(i)));
   }
 
@@ -49,14 +56,31 @@ export class Spider {
   }
 
   head(d = 16) {
-    return { x: this.x + Math.cos(this.heading) * d * this.U, y: this.y + Math.sin(this.heading) * d * this.U };
+    const len = d * this.stretch();
+    return { x: this.x + Math.cos(this.yaw) * len * this.U, y: this.y + Math.sin(this.yaw) * len * this.U };
+  }
+
+  // body length factor: stretches with each stride, breathes when still, swells on a grab
+  stretch() {
+    const mv = this.moving();
+    return 1 + 0.05 * mv * Math.sin(this.phase * 2) + 0.025 * (1 - mv) * Math.sin(this.t * 3.2) + 0.12 * this.pulse;
+  }
+
+  moving() {
+    return Math.min(1, Math.hypot(this.vel.x, this.vel.y) / (140 * this.U));
+  }
+
+  // a figure was grabbed: the body swells and both front legs strike towards it
+  pounce() {
+    this.pulse = 1;
+    this.nextTap = this.t;
   }
 
   // follow a moving goal with a damped spring: the body lags a little and the legs catch up
   update(goal, dt, face = null) {
     dt = Math.max(1e-4, Math.min(dt, 0.05));
     this.t += dt;
-    const k = 60, c = 2 * Math.sqrt(k) * 0.95;
+    const k = 170, c = 2 * Math.sqrt(k);           // critically damped: crisp dashes, never bounces back up
     this.bv.x += (k * (goal.x - this.x) - c * this.bv.x) * dt;
     this.bv.y += (k * (goal.y - this.y) - c * this.bv.y) * dt;
     const px = this.x, py = this.y;
@@ -69,8 +93,14 @@ export class Spider {
       const d = Math.atan2(Math.sin(want - this.heading), Math.cos(want - this.heading));
       this.heading += d * Math.min(1, dt * (vm > 8 * this.U ? 5 : 2.5));
     }
+    this.phase += vm * dt / (38 * this.U);
+    this.pulse = Math.max(0, this.pulse - dt * 3.5);
+    // the body sways with the stride (rotation only: it never leaves its line)
+    const mv = this.moving();
+    this.yaw = this.heading + 0.09 * mv * Math.sin(this.phase) + 0.02 * (1 - mv) * Math.sin(this.t * 1.7);
     this.advance(dt);
     this.step();
+    this.tap();
   }
 
   advance(dt) {
@@ -86,7 +116,7 @@ export class Spider {
       }
       // smooth start and finish with a small sideways arc
       const dx = a.to.x - a.from.x, dy = a.to.y - a.from.y, dl = Math.hypot(dx, dy) || 1;
-      const arc = Math.min(6 * this.U, dl * 0.12) * Math.sin(Math.PI * a.t);
+      const arc = Math.min((a.tap ? 9 : 12) * this.U, dl * 0.3) * Math.sin(Math.PI * a.t);
       this.feet[i] = { x: a.from.x + dx * s - dy / dl * arc, y: a.from.y + dy * s + dx / dl * arc, word: null };
     }
   }
@@ -119,16 +149,34 @@ export class Spider {
     cand.sort((a, b) => b[0] - a[0]);
     for (const [, i, to] of cand.slice(0, MAX_SWING - moving)) {
       const from = this.feet[i] || { x: this.x, y: this.y };
-      this.anim[i] = { from: { x: from.x, y: from.y }, to: this.snap(to), t: 0, dur: 0.18 / this.speed };
+      this.anim[i] = { from: { x: from.x, y: from.y }, to: this.snap(to), t: 0, dur: 0.14 / this.speed };
       this.lastStep[i] = now;
     }
   }
 
+  // while it stands reading, the front legs feel the words ahead: short taps around their rest spot
+  tap() {
+    if (this.t < this.nextTap || this.moving() > 0.15) return;
+    const free = [0, 4, 1, 5].filter((i) => !this.anim[i]);
+    if (!free.length || Object.keys(this.anim).length >= 2) return;
+    const strike = this.pulse > 0.5;
+    const legs = strike ? free.filter((i) => i === 0 || i === 4) : [free[Math.floor(Math.random() * free.length)]];
+    for (const i of legs) {
+      const r = this.rest(i), U = this.U;
+      const fwd = (strike ? 22 : 6 + Math.random() * 14) * U;
+      const to = { x: r.x + Math.cos(this.heading) * fwd + (Math.random() - 0.5) * 16 * U, y: r.y + Math.sin(this.heading) * fwd + (Math.random() - 0.5) * 10 * U };
+      const from = this.feet[i];
+      this.anim[i] = { from: { x: from.x, y: from.y }, to: this.snap(to), t: 0, dur: (strike ? 0.1 : 0.16) / Math.sqrt(this.speed), tap: true };
+      this.lastStep[i] = this.t;
+    }
+    this.nextTap = this.t + (0.25 + Math.random() * 0.45) / Math.sqrt(this.speed);
+  }
+
   hip(i) {
-    const h = this.heading, side = i < 4 ? -1 : 1, U = this.U;
+    const h = this.yaw, side = i < 4 ? -1 : 1, U = this.U;
     const ux = Math.cos(h), uy = Math.sin(h);
     const sx = Math.cos(h + side * Math.PI / 2), sy = Math.sin(h + side * Math.PI / 2);
-    const along = HIP_ALONG[i % 4] * BODY_LEN * U;
+    const along = HIP_ALONG[i % 4] * BODY_LEN * U * this.stretch();
     return { x: this.x + ux * along + sx * 0.5 * BODY_WID * U, y: this.y + uy * along + sy * 0.5 * BODY_WID * U, sx, sy };
   }
 
@@ -162,7 +210,7 @@ export class Spider {
 
   // ctx is in document coordinates
   draw(ctx) {
-    const U = this.U, h = this.heading;
+    const U = this.U, h = this.yaw, len = BODY_LEN * this.stretch(), wid = BODY_WID * (1 + 0.06 * this.pulse);
     // silk from the back end to an anchor behind and above, re-anchored when it gets long
     const tail = { x: this.x - Math.cos(h) * 9 * U, y: this.y - Math.sin(h) * 9 * U };
     const a = this.silkAnchor;
@@ -172,7 +220,10 @@ export class Spider {
     }
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     ctx.strokeStyle = COLORS.silk; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(tail.x, tail.y); ctx.lineTo(this.silkAnchor.x, this.silkAnchor.y); ctx.stroke();
+    // the line swings a little as the spider pulls on it
+    const sag = (6 + 18 * this.moving()) * U * Math.sin(this.t * 2.3 + this.phase * 0.25);
+    const mx = (tail.x + this.silkAnchor.x) / 2 + sag, my = (tail.y + this.silkAnchor.y) / 2;
+    ctx.beginPath(); ctx.moveTo(tail.x, tail.y); ctx.quadraticCurveTo(mx, my, this.silkAnchor.x, this.silkAnchor.y); ctx.stroke();
 
     // legs
     const r = Math.max(1.8, 2.5 * U);
@@ -191,12 +242,12 @@ export class Spider {
     ctx.translate(this.x, this.y);
     ctx.rotate(h - Math.PI / 2);
     ctx.fillStyle = COLORS.body; ctx.strokeStyle = COLORS.outline; ctx.lineWidth = 2;
-    roundRect(ctx, -BODY_WID * U / 2, -BODY_LEN * U / 2, BODY_WID * U, BODY_LEN * U, 2 * U);
+    roundRect(ctx, -wid * U / 2, -len * U / 2, wid * U, len * U, 2 * U);
     ctx.fill(); ctx.stroke();
     ctx.restore();
     const hd = this.head(16);
     ctx.fillStyle = COLORS.head;
-    ctx.beginPath(); ctx.arc(hd.x, hd.y, Math.max(2.5, 3.6 * U), 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hd.x, hd.y, Math.max(2.5, 3.6 * U) * (1 + 0.35 * this.pulse), 0, Math.PI * 2); ctx.fill();
   }
 }
 
