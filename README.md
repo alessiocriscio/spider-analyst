@@ -37,6 +37,20 @@ provided by operating activities, Purchases of property, plant and equipment… 
 e precedente e la scala (“in millions”, “in migliaia di euro”), e calcola scheda, controlli e osservazioni come
 per i bilanci XBRL. Per altri documenti (KID, prospetti) elenca le cifre principali, o le sceglie Claude.
 
+## Lingua e report scaricabile
+
+- **Lingua del report**: Italiano o English, nella pagina iniziale o in alto durante la lettura (cambiandola il report
+  viene rigenerato: osservazioni, controlli, etichette, formati dei numeri — $120B invece di $120 mld). Le etichette
+  copiate da un documento non strutturato (es. un KID in italiano) restano quelle del documento.
+- **Scarica report**: salva un file HTML autonomo con scheda, osservazioni, controlli e tutte le cifre lette con la
+  pagina; per un PDF aprilo e usa File → Stampa → Salva come PDF.
+
+## Il ragno
+
+Corpo nero con bordo blu e testa ciano, otto zampe ciano a tre segmenti con giunture e piedi rosa che si posano sulle
+parole (due gruppi alterni, mai più di quattro zampe sollevate), filo di seta alle spalle, raggi rosa e ciano che
+“pingano” parole e numeri davanti a lui, evidenziazioni al neon (contorni, riempimenti, parole ingrandite, strisce).
+
 ## Velocità
 
 Automatica: il ragno legge sempre **tutte** le cifre delle pagine che apre e regola il ritmo sul loro numero

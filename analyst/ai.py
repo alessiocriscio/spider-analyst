@@ -25,6 +25,14 @@ SYSTEM = (
 )
 
 
+def _lang_note() -> str:
+    from .i18n import lang
+    if lang() == "en":
+        return (" Write every text field (observations, labels, kind) in English, "
+                "and copy the figures exactly as they are written in the data.")
+    return ""
+
+
 def api_key() -> Optional[str]:
     k = os.environ.get("ANTHROPIC_API_KEY")
     if k:
@@ -51,7 +59,7 @@ def _call(prompt: str, schema: dict, max_tokens: int = 8000) -> Optional[dict]:
     resp = client.beta.messages.create(
         model=MODEL,
         max_tokens=max_tokens,
-        system=SYSTEM,
+        system=SYSTEM + _lang_note(),
         messages=[{"role": "user", "content": prompt}],
         output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
         betas=["server-side-fallback-2026-07-01"],

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import ai, financials as F, generic, ixbrl, market, sources, statements
+from .i18n import t, using
 
 DOCS = sources.CACHE / "docs"
 Progress = Callable[[str, float], None]
@@ -49,7 +50,7 @@ def _humanize(concept: str) -> str:
 
 def view_html(pages: list[dict], css: str, flush: bool = False) -> str:
     body = "".join(
-        f'<section class="sa-page{" flush" if flush else ""}" data-page="{p["n"]}"><div class="sa-pnum">Pagina {p["n"]}</div>'
+        f'<section class="sa-page{" flush" if flush else ""}" data-page="{p["n"]}"><div class="sa-pnum">{t("Pagina", "Page")} {p["n"]}</div>'
         f'<div class="sa-pbody">{p["html"]}</div></section>' for p in pages)
     return (f'<!doctype html><html><head><meta charset="utf-8"><style>{BASE_CSS}\n{css}</style></head>'
             f'<body><main id="sa-doc">{body}</main></body></html>')
@@ -112,8 +113,8 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
     shown = sorted({cover, *best})
 
     facts, rows, cols = {}, {}, {}
-    y_cur = str(per.end.year) if per.end else "Corrente"
-    y_prev = str(per.end.year - 1) if per.end else "Precedente"
+    y_cur = str(per.end.year) if per.end else t("Corrente", "Current")
+    y_prev = str(per.end.year - 1) if per.end else t("Precedente", "Prior")
     for p in shown:
         cols[p] = [y_cur, y_prev]
         table: dict[str, list] = {}
@@ -123,7 +124,7 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
         for f in on_page:
             role = per.role(f)
             key = metric_ids.get(f.id)
-            label = F.METRICS[key][0] if key else (f.row_label or _humanize(f.concept))
+            label = F.label(key) if key else (f.row_label or _humanize(f.concept))
             facts[f.id] = {"label": label, "display": f.display, "value_fmt": _fact_fmt(f, doc.units), "page": p,
                            "key": bool(key), "metric": key, "role": role}
             if role and not doc.contexts[f.context].dimensional:
@@ -138,7 +139,9 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
 
     company = doc.info.get("EntityRegistrantName") or doc.info.get("NameOfReportingEntityOrOtherMeansOfIdentification") or meta.get("company", "")
     form = doc.info.get("DocumentType") or meta.get("form", "")
-    period = f"{per.end.day} {market.MONTHS[per.end.month - 1]} {per.end.year}" if per.end else doc.info.get("DocumentPeriodEndDate", "")
+    mn = market.months()
+    period = (t(f"{per.end.day} {mn[per.end.month - 1]} {per.end.year}", f"{mn[per.end.month - 1]} {per.end.day}, {per.end.year}")
+              if per.end else doc.info.get("DocumentPeriodEndDate", ""))
     ai_used = False
     if use_ai and ai.available():
         progress("Claude scrive le osservazioni", 0.75)
@@ -147,7 +150,7 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
             obs = ai.observations(f"{company} {form} {period}", data)
         except Exception as e:  # network/API errors: keep the deterministic findings
             obs = []
-            meta.setdefault("warnings", []).append(f"Claude non disponibile: {type(e).__name__}")
+            meta.setdefault("warnings", []).append(t("Claude non disponibile: ", "Claude unavailable: ") + type(e).__name__)
         if len(obs) >= 3:
             finds, ai_used = obs, True
 
@@ -158,11 +161,11 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
                      flush=_is_paged_layout(doc.pages[shown[-1] - 1]))
     a = {
         "id": meta["id"], "kind": "ixbrl",
-        "title": company or "Documento",
-        "subtitle": " · ".join(x for x in (form, f"periodo chiuso il {period}" if period else "", meta.get("source_label", "")) if x),
+        "title": company or t("Documento", "Document"),
+        "subtitle": " · ".join(x for x in (form, t(f"periodo chiuso il {period}", f"period ended {period}") if period else "", meta.get("source_label", "")) if x),
         "source": meta.get("url", url),
         "currency": cur,
-        "pages": [{"n": p, "title": next((h["text"] for h in doc.headings if h["page"] == p), f"Pagina {p}")} for p in shown],
+        "pages": [{"n": p, "title": next((h["text"] for h in doc.headings if h["page"] == p), t(f"Pagina {p}", f"Page {p}"))} for p in shown],
         "total_pages": len(doc.pages),
         "cols": cols, "rows": rows, "facts": facts, "total_facts": len(doc.facts),
         "headings": [h for h in doc.headings if h["page"] in shown],
@@ -219,13 +222,13 @@ def from_market(symbol: str, meta: dict, progress: Progress) -> dict:
                           "key": f["key"], "metric": None, "role": "cur"}
         rows.setdefault(f["page"], []).append({"label": f["label"].replace("Rendimento ", "") if f["page"] in (2, 3) else f["label"], "cells": [f["id"]]})
     for p in range(1, n + 1):
-        cols[p] = ["Valore"]
+        cols[p] = [t("Valore", "Value")]
         rows.setdefault(p, [])
     view = view_html([{"n": i + 1, "html": f'<div class="sheet">{h}</div>'} for i, h in enumerate(r["pages"])], market.CSS)
     a = {
-        "id": meta["id"], "kind": "market", "title": r["title"], "subtitle": r["subtitle"] + " · fonte Yahoo Finance",
+        "id": meta["id"], "kind": "market", "title": r["title"], "subtitle": r["subtitle"] + t(" · fonte Yahoo Finance", " · source Yahoo Finance"),
         "source": f"https://finance.yahoo.com/quote/{symbol}", "currency": r["currency"],
-        "pages": [{"n": p, "title": titles.get(p, f"Pagina {p}")} for p in range(1, n + 1)], "total_pages": n,
+        "pages": [{"n": p, "title": titles.get(p, t(f"Pagina {p}", f"Page {p}"))} for p in range(1, n + 1)], "total_pages": n,
         "cols": cols, "rows": rows, "facts": facts, "total_facts": len(r["facts"]), "headings": r["headings"],
         "findings": r["findings"][:6], "card": r["card"], "card_findings": r["findings"][:3], "checks": r["checks"],
         "warnings": [], "ai": False,
@@ -249,7 +252,7 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
     first_heading = next((h["text"] for h in g["headings"] if h["page"] == g["pages"][0]["n"]), "")
     title = g.get("title") if (g.get("title") or "").lower() not in ("", "untitled") else \
         ((g.get("info") or {}).get("EntityRegistrantName") or first_heading or name)
-    kind_label = "Documento"
+    kind_label = t("Documento", "Document")
     finds, card, ai_used = [], [], False
     if use_ai and ai.available():
         progress("Claude sceglie le cifre importanti", 0.65)
@@ -260,7 +263,7 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
             res = ai.pick_figures(title, texts, cands)
         except Exception as e:
             res = None
-            meta.setdefault("warnings", []).append(f"Claude non disponibile: {type(e).__name__}")
+            meta.setdefault("warnings", []).append(t("Claude non disponibile: ", "Claude unavailable: ") + type(e).__name__)
         if res and res["figures"]:
             ai_used = True
             kind_label = res["kind"] or kind_label
@@ -273,11 +276,12 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
     stmt = _statement_view(g, facts, finds)
     if stmt:
         return save({**stmt, "id": meta["id"], "kind": "pdf" if is_pdf else "html", "title": title,
-                     "subtitle": " · ".join(x for x in (kind_label if ai_used else "Bilancio", f"{g['total_pages']} pagine",
-                                                        "voci riconosciute dal testo") if x),
+                     "subtitle": " · ".join(x for x in (kind_label if ai_used else t("Bilancio", "Financial statements"),
+                                                        t(f"{g['total_pages']} pagine", f"{g['total_pages']} pages"),
+                                                        t("voci riconosciute dal testo", "items recognised from the text")) if x),
                      "source": url or name, "total_pages": g["total_pages"], "total_facts": len(g["facts"]),
                      "headings": g["headings"], "facts": facts,
-                     "pages": [{"n": p["n"], "title": next((h["text"] for h in g["headings"] if h["page"] == p["n"]), f"Pagina {p['n']}")} for p in g["pages"]],
+                     "pages": [{"n": p["n"], "title": next((h["text"] for h in g["headings"] if h["page"] == p["n"]), t(f"Pagina {p['n']}", f"Page {p['n']}"))} for p in g["pages"]],
                      "warnings": meta.get("warnings", []), "ai": ai_used}, view_html(g["pages"], g["css"], flush=is_pdf))
     keyed = sorted((f for f in g["facts"] if facts[f["id"]]["key"]), key=lambda f: -f["score"]) if not ai_used else \
         [next(x for x in g["facts"] if x["id"] == int(p["id"])) for p in res["figures"]]
@@ -287,19 +291,21 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
             for f in keyed[:4]]
     rows, cols = {}, {}
     for p in g["pages"]:
-        cols[p["n"]] = ["Valore"]
+        cols[p["n"]] = [t("Valore", "Value")]
         rows[p["n"]] = [{"label": facts[f["id"]]["label"], "cells": [f["id"]]} for f in g["facts"] if f["page"] == p["n"] and facts[f["id"]]["key"]]
     view = view_html(g["pages"], g["css"], flush=is_pdf)
     a = {
         "id": meta["id"], "kind": "pdf" if is_pdf else "html", "title": title,
-        "subtitle": " · ".join(x for x in (kind_label, f"{g['total_pages']} pagine", "estrazione euristica" if not ai_used else "cifre scelte da Claude") if x),
+        "subtitle": " · ".join(x for x in (kind_label, t(f"{g['total_pages']} pagine", f"{g['total_pages']} pages"),
+                                           t("estrazione euristica", "heuristic extraction") if not ai_used else t("cifre scelte da Claude", "figures chosen by Claude")) if x),
         "source": url or name, "currency": "",
-        "pages": [{"n": p["n"], "title": next((h["text"] for h in g["headings"] if h["page"] == p["n"]), f"Pagina {p['n']}")} for p in g["pages"]],
+        "pages": [{"n": p["n"], "title": next((h["text"] for h in g["headings"] if h["page"] == p["n"]), t(f"Pagina {p['n']}", f"Page {p['n']}"))} for p in g["pages"]],
         "total_pages": g["total_pages"], "cols": cols, "rows": rows, "facts": facts, "total_facts": len(g["facts"]),
         "headings": g["headings"], "findings": finds[:6], "card": card, "card_findings": finds[:3],
-        "checks": [{"name": "Ogni cifra mostrata compare nel testo della pagina", "ok": True, "pages": [], "detail": ""}],
+        "checks": [{"name": t("Ogni cifra mostrata compare nel testo della pagina", "Every figure shown appears in the page text"),
+                    "ok": True, "pages": [], "detail": ""}],
         "warnings": meta.get("warnings", []) + ([] if ai_used or not use_ai else
-                                                 ["Claude non configurato: cifre scelte con regole euristiche."] if not ai.available() else []),
+                                                 [t("Claude non configurato: cifre scelte con regole euristiche.", "Claude not configured: figures chosen by heuristic rules.")] if not ai.available() else []),
         "ai": ai_used,
     }
     return save(a, view)
@@ -313,16 +319,16 @@ def _statement_view(g: dict, facts: dict, ai_finds: list) -> Optional[dict]:
     if len(m) < 3 or not ({"revenue", "net_income"} & set(m)):
         return None
     d = F.derive(m)
-    y_cur, y_prev = (str(x["years"][0]), str(x["years"][1])) if x["years"] else ("Anno corrente", "Anno precedente")
+    y_cur, y_prev = (str(x["years"][0]), str(x["years"][1])) if x["years"] else (t("Anno corrente", "Current year"), t("Anno precedente", "Prior year"))
     rows: dict = {}
     for key, mm in m.items():
         for which in ("cur", "prev"):
             if mm.get(which):
                 f = facts[mm[which]["id"]]
-                f.update(label=F.METRICS[key][0], key=True, metric=key, role=which,
+                f.update(label=F.label(key), key=True, metric=key, role=which,
                          value_fmt=F.fmt_value(key, mm[which]["value"], cur))
         p = mm["cur"]["page"]
-        rows.setdefault(p, []).append({"label": F.METRICS[key][0], "cells": [mm["cur"]["id"], mm["prev"]["id"] if mm.get("prev") else None]})
+        rows.setdefault(p, []).append({"label": F.label(key), "cells": [mm["cur"]["id"], mm["prev"]["id"] if mm.get("prev") else None]})
     finds = ai_finds or F.findings(m, d, cur)
     return {"currency": cur, "cols": {p["n"]: [y_cur, y_prev] for p in g["pages"]},
             "rows": {p["n"]: rows.get(p["n"], []) for p in g["pages"]},
@@ -343,13 +349,47 @@ def is_ixbrl(data: bytes) -> bool:
 # ---------------------------------------------------------------- entry points
 
 def run(req: dict, progress: Progress) -> dict:
-    """req: {"kind": "sec"|"esef"|"market"|"url"|"upload", ...}"""
+    """req: {"kind": "sec"|"esef"|"market"|"url"|"upload"|"upload_ref", "lang": "it"|"en", ...}"""
+    lang = req.get("lang") if req.get("lang") in ("it", "en") else "it"
+    if req["kind"] == "upload":
+        # keep the file so the report can be rebuilt in the other language
+        sha = hashlib.sha256(req["data"]).hexdigest()
+        up = DOCS / "uploads" / f"{sha}.bin"
+        if not up.exists():
+            up.parent.mkdir(parents=True, exist_ok=True)
+            up.write_bytes(req["data"])
+        req = {**req, "kind": "upload_ref", "sha": sha}
+        req.pop("data")
+    if req["kind"] == "upload_ref":
+        up = DOCS / "uploads" / f"{req.get('sha', '')}.bin"
+        if not re.fullmatch(r"[0-9a-f]{64}", req.get("sha", "")) or not up.exists():
+            raise sources.SourceError("Il file caricato non è più disponibile: caricalo di nuovo.")
+        data = up.read_bytes()
+    else:
+        data = None
+    ref = {k: v for k, v in req.items() if k in ("kind", "query", "symbol", "url", "form", "ai", "sha", "name")}
+    with using(lang):
+        a = _run(req, data, lang, progress)
+    if a.get("lang") != lang or a.get("req") != ref:
+        a["lang"], a["req"] = lang, ref
+        (DOCS / a["id"] / "analysis.json").write_text(json.dumps(a, ensure_ascii=False), encoding="utf-8")
+    return a
+
+
+def relang(aid: str, lang: str, progress: Progress) -> dict:
+    a = load(aid)
+    if not a or not a.get("req"):
+        raise sources.SourceError("Analisi non trovata: rifai la ricerca.")
+    return run({**a["req"], "lang": lang}, progress)
+
+
+def _run(req: dict, data: Optional[bytes], lang: str, progress: Progress) -> dict:
     use_ai = bool(req.get("ai"))
     kind = req["kind"]
     if kind == "sec":
         progress("Cerco il bilancio su SEC EDGAR", 0.08)
         f = sources.sec_latest(req["query"], req.get("form")) if not req.get("url") else {"url": req["url"], "form": req.get("form", "")}
-        aid = _id("sec", f["url"], use_ai)
+        aid = _id("sec", f["url"], use_ai, lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit
         progress(f"Scarico il {f.get('form') or 'documento'} da sec.gov", 0.18)
@@ -359,7 +399,7 @@ def run(req: dict, progress: Progress) -> dict:
     if kind == "esef":
         progress("Cerco la relazione ESEF su filings.xbrl.org", 0.08)
         f = sources.esef_latest(req["query"]) if not req.get("url") else {"url": req["url"]}
-        aid = _id("esef", f["url"], use_ai)
+        aid = _id("esef", f["url"], use_ai, lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit
         progress("Scarico la relazione annuale (può pesare decine di MB)", 0.18)
@@ -368,7 +408,7 @@ def run(req: dict, progress: Progress) -> dict:
         return from_ixbrl(data, f["url"], meta, use_ai, progress)
     if kind == "market":
         sym = req["symbol"].strip()
-        aid = _id("market", sym.upper(), _today())
+        aid = _id("market", sym.upper(), _today(), lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit
         return from_market(sym, {"id": aid}, progress)
@@ -376,7 +416,7 @@ def run(req: dict, progress: Progress) -> dict:
         url = req["url"].strip()
         if not re.match(r"^https?://", url):
             raise sources.SourceError("Indirizzo non valido: deve iniziare con http:// o https://")
-        aid = _id("url", url, use_ai)
+        aid = _id("url", url, use_ai, lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit
         progress("Scarico il documento", 0.15)
@@ -385,12 +425,11 @@ def run(req: dict, progress: Progress) -> dict:
         if is_ixbrl(data):
             return from_ixbrl(data, url, meta, use_ai, progress)
         return from_generic(data, url.rsplit("/", 1)[-1] or url, url, meta, use_ai, progress)
-    if kind == "upload":
-        data: bytes = req["data"]
-        aid = _id("upload", hashlib.sha256(data).hexdigest(), use_ai)
+    if kind == "upload_ref":
+        aid = _id("upload", req["sha"], use_ai, lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit
-        meta = {"id": aid, "url": req.get("name", ""), "source_label": "file caricato"}
+        meta = {"id": aid, "url": req.get("name", ""), "source_label": t("file caricato", "uploaded file")}
         if is_ixbrl(data):
             return from_ixbrl(data, None, meta, use_ai, progress)
         return from_generic(data, req.get("name", "documento"), None, meta, use_ai, progress)

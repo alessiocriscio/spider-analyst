@@ -133,7 +133,7 @@ def _start(req: dict) -> str:
 
     def work():
         try:
-            a = pipeline.run(req, progress)
+            a = pipeline.relang(req["id"], req["lang"], progress) if req["kind"] == "relang" else pipeline.run(req, progress)
             job.update(status="done", progress=1.0, step="Pronto", analysis_id=a["id"])
         except sources.SourceError as e:
             job.update(status="error", error=str(e))
@@ -149,16 +149,25 @@ async def analyze(request: Request):
     kind = body.get("kind")
     if kind not in ("sec", "esef", "market", "url"):
         raise HTTPException(400, "kind non valido")
-    req = {k: body[k] for k in ("kind", "query", "symbol", "url", "form", "ai", "refresh") if k in body}
+    req = {k: body[k] for k in ("kind", "query", "symbol", "url", "form", "ai", "refresh", "lang") if k in body}
     return {"job": _start(req)}
 
 
+@app.post("/api/relang")
+async def relang(request: Request):
+    body = await request.json()
+    lang = body.get("lang")
+    if lang not in ("it", "en") or not re.fullmatch(r"[0-9a-f]{16}", str(body.get("id", ""))):
+        raise HTTPException(400, "richiesta non valida")
+    return {"job": _start({"kind": "relang", "id": body["id"], "lang": lang})}
+
+
 @app.post("/api/upload")
-async def upload(file: UploadFile = File(...), use_ai: bool = Form(False)):
+async def upload(file: UploadFile = File(...), use_ai: bool = Form(False), lang: str = Form("it")):
     data = await file.read(MAX_UPLOAD + 1)
     if len(data) > MAX_UPLOAD:
         raise HTTPException(413, "File troppo grande (max 80 MB)")
-    return {"job": _start({"kind": "upload", "data": data, "name": file.filename or "documento", "ai": use_ai})}
+    return {"job": _start({"kind": "upload", "data": data, "name": file.filename or "documento", "ai": use_ai, "lang": lang})}
 
 
 @app.get("/api/job/{jid}")

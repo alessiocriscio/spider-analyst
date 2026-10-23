@@ -156,3 +156,23 @@ def test_pdf_note_references_are_not_figures(tmp_path):
     import make_pdf_en  # noqa: F401
     g = generic.pdf_document((FIX / "annual_en.pdf").read_bytes(), tmp_path, "/img")
     assert not [f for f in g["facts"] if f["display"] in ("4", "9")]
+
+
+def test_report_in_english():
+    a = pipeline.run({"kind": "upload", "data": (FIX / "sec_10k.htm").read_bytes(), "name": "x.htm", "lang": "en"}, lambda *_: None)
+    card = {t["key"]: t for t in a["card"]}
+    assert a["lang"] == "en" and card["revenue"]["display"] == "$120B" and card["revenue"]["yoy_display"] == "+20.0%"
+    assert a["findings"][0]["text"].startswith(("Revenue", "Free cash flow", "Net income", "Operating"))
+    assert all(c["name"][0] in "GAPDF" for c in a["checks"])            # English check names
+    assert "Pagina" not in (pipeline.DOCS / a["id"] / "view.html").read_text()
+    it = pipeline.relang(a["id"], "it", lambda *_: None)
+    assert it["lang"] == "it" and it["id"] != a["id"] and {t["key"]: t for t in it["card"]}["revenue"]["display"] == "$120 mld"
+
+
+def test_market_sheet_english():
+    from synth import series
+    from analyst.i18n import using
+    with using("en"):
+        r = market.build(series())
+    assert r["subtitle"].startswith("Cryptocurrency") and "market sheet" in r["subtitle"]
+    assert "Rendimento" not in "".join(r["pages"]) and "Monthly returns" in r["pages"][2]

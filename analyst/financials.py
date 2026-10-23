@@ -9,6 +9,7 @@ from collections import Counter
 from datetime import date
 from typing import Optional
 
+from .i18n import lang, t
 from .ixbrl import Fact, IxDoc
 
 # key -> (it, en, kind, candidate concepts by local name, tried in order)
@@ -243,44 +244,55 @@ def derive(m: dict) -> dict:
 def checks(m: dict) -> list[dict]:
     """Arithmetic cross-checks between tagged figures."""
     out = []
+    ok = t("quadra", "balances")
 
     def add(name, lhs, rhs, tol, pages, ok_text):
         if lhs is None or rhs is None or rhs == 0:
             return
         diff = abs(lhs - rhs) / max(abs(rhs), 1e-9)
         out.append({"name": name, "ok": diff <= tol, "diff_pct": round(diff * 100, 2), "pages": pages,
-                    "detail": ok_text if diff <= tol else f"scarto del {diff * 100:.1f}%"})
+                    "detail": ok_text if diff <= tol else t(f"scarto del {fmt_num(diff * 100, 1)}%", f"off by {fmt_num(diff * 100, 1)}%")})
 
     rev, cost, gross = _v(m, "revenue"), _v(m, "cost_of_revenue"), _v(m, "gross_profit")
     if None not in (rev, cost, gross):
-        add("Margine lordo = ricavi − costo del venduto", gross, rev - cost, 0.005, _pages(m, "revenue", "gross_profit"), "quadra")
+        add(t("Margine lordo = ricavi − costo del venduto", "Gross profit = revenue − cost of revenue"), gross, rev - cost, 0.005, _pages(m, "revenue", "gross_profit"), ok)
     a, l, e = _v(m, "total_assets"), _v(m, "total_liabilities"), _v(m, "equity")
     if None not in (a, l, e):
-        add("Attivo = passivo + patrimonio netto", a, l + e, 0.01, _pages(m, "total_assets", "total_liabilities", "equity"), "quadra")
+        add(t("Attivo = passivo + patrimonio netto", "Assets = liabilities + equity"), a, l + e, 0.01, _pages(m, "total_assets", "total_liabilities", "equity"), ok)
     elif a is not None and _v(m, "liab_and_equity") is not None:
-        add("Attivo = passivo e patrimonio netto", a, _v(m, "liab_and_equity"), 0.001, _pages(m, "total_assets", "liab_and_equity"), "quadra")
+        add(t("Attivo = passivo e patrimonio netto", "Assets = liabilities and equity"), a, _v(m, "liab_and_equity"), 0.001, _pages(m, "total_assets", "liab_and_equity"), ok)
     pre, tax = _v(m, "pretax_income"), _v(m, "income_tax")
     ni = _v(m, "profit_total") if _v(m, "profit_total") is not None else _v(m, "net_income")
     if None not in (pre, tax, ni):
-        add("Utile ante imposte − imposte ≈ utile netto", pre - tax, ni, 0.03, _pages(m, "pretax_income", "income_tax", "net_income"), "quadra")
+        add(t("Utile ante imposte − imposte ≈ utile netto", "Pre-tax income − taxes ≈ net income"), pre - tax, ni, 0.03, _pages(m, "pretax_income", "income_tax", "net_income"), ok)
     eps, sh, nip = _v(m, "eps_diluted"), _v(m, "diluted_shares"), _v(m, "net_income")
     if None not in (eps, sh, nip) and sh > 0:
-        add("EPS diluito × azioni diluite ≈ utile netto", eps * sh, nip, 0.03, _pages(m, "eps_diluted", "diluted_shares", "net_income"), "quadra")
+        add(t("EPS diluito × azioni diluite ≈ utile netto", "Diluted EPS × diluted shares ≈ net income"), eps * sh, nip, 0.03, _pages(m, "eps_diluted", "diluted_shares", "net_income"), ok)
     cfo, capex = _v(m, "cfo"), _v(m, "capex")
     if None not in (cfo, capex):
-        out.append({"name": "FCF = flusso operativo − capex", "ok": True, "diff_pct": 0.0, "pages": _pages(m, "cfo", "capex"),
-                    "detail": "calcolato"})
+        out.append({"name": t("FCF = flusso operativo − capex", "FCF = operating cash flow − capex"), "ok": True, "diff_pct": 0.0, "pages": _pages(m, "cfo", "capex"),
+                    "detail": t("calcolato", "computed")})
     return out
 
 
-# ---------------------------------------------------------------- formatting (Italian)
+# ---------------------------------------------------------------- formatting (report language)
+
+def label(key: str) -> str:
+    it, en = METRICS[key][0], METRICS[key][1]
+    return t(it, en)
+
+
+SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥", "CHF": "CHF ", "CAD": "C$", "SEK": "SEK ", "DKK": "DKK ", "NOK": "NOK "}
+
 
 def fmt_money(v: Optional[float], cur: str = "") -> str:
     if v is None:
         return "—"
-    sym = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥", "CHF": "CHF ", "CAD": "C$", "SEK": "SEK ", "DKK": "DKK ", "NOK": "NOK "}.get(cur.upper(), (cur + " ") if cur else "")
+    sym = SYMBOLS.get(cur.upper(), (cur + " ") if cur else "")
     a, sign = abs(v), "−" if v < 0 else ""
-    for div, suf in ((1e12, " bln"), (1e9, " mld"), (1e6, " mln"), (1e3, " mila")):
+    units = ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")) if lang() == "en" else \
+        ((1e12, " bln"), (1e9, " mld"), (1e6, " mln"), (1e3, " mila"))
+    for div, suf in units:
         if a >= div:
             n = a / div
             s = f"{n:,.1f}" if n < 100 else f"{n:,.0f}"
@@ -309,6 +321,9 @@ def art(s: str, prep: bool = True) -> str:
 
 
 def _it(s: str) -> str:
+    """Number written the report's way: 1.234,5 in Italian, 1,234.5 in English."""
+    if lang() == "en":
+        return s
     return s.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
@@ -332,63 +347,95 @@ def findings(m: dict, d: dict, cur: str) -> list[dict]:
     """Observations ranked by how much they say; each cites the page(s) it rests on."""
     c, p, g = d["cur"], d["prev"], d["growth"]
     out: list[tuple[float, dict]] = []
+    pct, money = fmt_pct, fmt_money
 
     def add(score, text, pages, keys):
         out.append((score, {"text": text, "pages": [x for x in pages if x], "keys": keys}))
 
     if g["revenue"] is not None:
+        up = g["revenue"] >= 0
+        rv, rp, gr = money(_v(m, "revenue"), cur), money(_v(m, "revenue", "prev"), cur), pct(abs(g["revenue"]))
         add(1 + abs(g["revenue"]) * 4,
-            f"Ricavi {'in crescita' if g['revenue'] >= 0 else 'in calo'} {art(fmt_pct(abs(g['revenue'])))} a {fmt_money(_v(m, 'revenue'), cur)}"
-            f" (da {fmt_money(_v(m, 'revenue', 'prev'), cur)}).", _pages(m, "revenue"), ["revenue"])
+            t(f"Ricavi {'in crescita' if up else 'in calo'} {art(gr)} a {rv} (da {rp}).",
+              f"Revenue {'up' if up else 'down'} {gr} to {rv} (from {rp})."), _pages(m, "revenue"), ["revenue"])
     if g["revenue"] is not None and g["net_income"] is not None and abs(g["net_income"] - g["revenue"]) > 0.03:
         faster = g["net_income"] > g["revenue"]
+        ni, rv = pct(g["net_income"], signed=True), pct(g["revenue"], signed=True)
         add(1.2 + abs(g["net_income"] - g["revenue"]) * 3,
-            f"L'utile netto ({fmt_pct(g['net_income'], signed=True)}) cresce {'più' if faster else 'meno'} dei ricavi ({fmt_pct(g['revenue'], signed=True)}): "
-            f"i margini si stanno {'allargando' if faster else 'restringendo'}.", _pages(m, "net_income", "revenue"), ["net_income", "revenue"])
+            t(f"L'utile netto ({ni}) cresce {'più' if faster else 'meno'} dei ricavi ({rv}): i margini si stanno {'allargando' if faster else 'restringendo'}.",
+              f"Net income ({ni}) is growing {'faster' if faster else 'slower'} than revenue ({rv}): margins are {'widening' if faster else 'narrowing'}."),
+            _pages(m, "net_income", "revenue"), ["net_income", "revenue"])
     if c["operating_margin"] is not None:
-        txt = f"Margine operativo {art(fmt_pct(c['operating_margin']))}"
+        om = pct(c["operating_margin"])
+        txt = t(f"Margine operativo {art(om)}", f"Operating margin of {om}")
         if p["operating_margin"] is not None:
             delta = (c["operating_margin"] - p["operating_margin"]) * 100
-            txt += f" ({'+' if delta >= 0 else '−'}{_it(f'{abs(delta):.1f}')} punti rispetto all'anno precedente)"
+            dd = f"{'+' if delta >= 0 else '−'}{_it(f'{abs(delta):.1f}')}"
+            txt += t(f" ({dd} punti rispetto all'anno precedente)", f" ({dd} points on the prior year)")
         add(1 + abs(c["operating_margin"]) + (abs(c["operating_margin"] - p["operating_margin"]) * 10 if p["operating_margin"] is not None else 0),
             txt + ".", _pages(m, "operating_income"), ["operating_income"])
     if c["fcf"] is not None:
-        txt = f"Free cash flow di {fmt_money(c['fcf'], cur)}"
+        fv = money(c["fcf"], cur)
+        txt = t(f"Free cash flow di {fv}", f"Free cash flow of {fv}")
         if g["fcf"] is not None:
-            txt += f" ({fmt_pct(g['fcf'], signed=True)} sull'anno)"
+            txt += t(f" ({pct(g['fcf'], signed=True)} sull'anno)", f" ({pct(g['fcf'], signed=True)} year on year)")
         if c["return_pct_fcf"] is not None:
-            txt += f"; {art(fmt_pct(c['return_pct_fcf'], 0), False)} è tornato agli azionisti tra riacquisti e dividendi"
+            rp = pct(c["return_pct_fcf"], 0)
+            txt += t(f"; {art(rp, False)} è tornato agli azionisti tra riacquisti e dividendi",
+                     f"; {rp} went back to shareholders through buybacks and dividends")
         add(1.5 + (abs(g["fcf"]) if g["fcf"] is not None else 0), txt + ".", _pages(m, "cfo", "capex", "buybacks", "dividends"), ["cfo", "capex"])
     if c["fcf"] is not None and _v(m, "net_income") and _v(m, "net_income") > 0:
         conv = c["fcf"] / _v(m, "net_income")
         if conv < 0.7 or conv > 1.3:
-            add(1.3 + abs(conv - 1), f"Il free cash flow vale {_it(f'{conv:.2f}')} volte l'utile netto: "
-                f"{'la cassa generata supera gli utili contabili' if conv > 1 else 'gli utili si convertono in cassa solo in parte'}.",
+            cv = _it(f"{conv:.2f}")
+            add(1.3 + abs(conv - 1),
+                t(f"Il free cash flow vale {cv} volte l'utile netto: "
+                  f"{'la cassa generata supera gli utili contabili' if conv > 1 else 'gli utili si convertono in cassa solo in parte'}.",
+                  f"Free cash flow is {cv} times net income: "
+                  f"{'cash generation exceeds reported earnings' if conv > 1 else 'only part of the earnings turns into cash'}."),
                 _pages(m, "cfo", "net_income"), ["cfo", "net_income"])
     if c["sbc_pct_fcf"] is not None and c["sbc_pct_fcf"] > 0.15:
-        add(1 + c["sbc_pct_fcf"] * 2, f"I compensi in azioni ({fmt_money(_v(m, 'sbc'), cur)}) equivalgono a {art(fmt_pct(c['sbc_pct_fcf'], 0), False)} del free cash flow.",
-            _pages(m, "sbc"), ["sbc"])
+        sv, sp = money(_v(m, "sbc"), cur), pct(c["sbc_pct_fcf"], 0)
+        add(1 + c["sbc_pct_fcf"] * 2,
+            t(f"I compensi in azioni ({sv}) equivalgono a {art(sp, False)} del free cash flow.",
+              f"Stock-based compensation ({sv}) equals {sp} of free cash flow."), _pages(m, "sbc"), ["sbc"])
     if c["interest_coverage"] is not None:
         ic = c["interest_coverage"]
-        add(0.8 + (1.5 if ic < 3 else 0), f"Gli utili ante interessi coprono gli interessi passivi {_it(f'{ic:.1f}')} volte"
-            + (" — copertura stretta." if ic < 3 else "."), _pages(m, "interest_expense", "pretax_income"), ["interest_expense"])
+        iv = _it(f"{ic:.1f}")
+        add(0.8 + (1.5 if ic < 3 else 0),
+            t(f"Gli utili ante interessi coprono gli interessi passivi {iv} volte" + (" — copertura stretta." if ic < 3 else "."),
+              f"Earnings before interest cover interest expense {iv} times" + (" — thin coverage." if ic < 3 else ".")),
+            _pages(m, "interest_expense", "pretax_income"), ["interest_expense"])
     if _v(m, "debt_current") is not None and _v(m, "cash") is not None:
         r = c["cash_vs_debt_due"]
-        add(0.9 + (1.5 if r is not None and r < 1 else 0),
-            f"Debito in scadenza entro 12 mesi: {fmt_money(_v(m, 'debt_current'), cur)}, contro una cassa di {fmt_money(_v(m, 'cash'), cur)}"
-            + (" — la cassa non basta a coprirlo." if r is not None and r < 1 else "."), _pages(m, "debt_current", "cash"), ["debt_current", "cash"])
+        short = r is not None and r < 1
+        dv, cv = money(_v(m, "debt_current"), cur), money(_v(m, "cash"), cur)
+        add(0.9 + (1.5 if short else 0),
+            t(f"Debito in scadenza entro 12 mesi: {dv}, contro una cassa di {cv}" + (" — la cassa non basta a coprirlo." if short else "."),
+              f"Debt due within 12 months: {dv}, against cash of {cv}" + (" — cash does not cover it." if short else ".")),
+            _pages(m, "debt_current", "cash"), ["debt_current", "cash"])
     if c["current_ratio"] is not None:
         cr = c["current_ratio"]
-        add(0.6 + (1.2 if cr < 1 else 0), f"Current ratio di {_it(f'{cr:.2f}')}: l'attivo corrente {'copre' if cr >= 1 else 'non copre'} il passivo corrente.",
+        crv = _it(f"{cr:.2f}")
+        add(0.6 + (1.2 if cr < 1 else 0),
+            t(f"Current ratio di {crv}: l'attivo corrente {'copre' if cr >= 1 else 'non copre'} il passivo corrente.",
+              f"Current ratio of {crv}: current assets {'cover' if cr >= 1 else 'do not cover'} current liabilities."),
             _pages(m, "current_assets", "current_liabilities"), ["current_assets", "current_liabilities"])
     if c["equity_multiplier"] is not None:
         em = c["equity_multiplier"]
-        add(0.5 + (1 if em > 4 else 0), f"Moltiplicatore del capitale di {_it(f'{em:.1f}')}x (attivo / patrimonio netto)"
-            + (": bilancio molto a leva." if em > 4 else "."), _pages(m, "total_assets", "equity"), ["total_assets", "equity"])
+        ev = _it(f"{em:.1f}")
+        add(0.5 + (1 if em > 4 else 0),
+            t(f"Moltiplicatore del capitale di {ev}x (attivo / patrimonio netto)" + (": bilancio molto a leva." if em > 4 else "."),
+              f"Equity multiplier of {ev}x (assets / equity)" + (": a highly leveraged balance sheet." if em > 4 else ".")),
+            _pages(m, "total_assets", "equity"), ["total_assets", "equity"])
     if c["rnd_ratio"] is not None and c["rnd_ratio"] > 0.05:
-        add(0.7 + c["rnd_ratio"], f"Spende {art(fmt_pct(c['rnd_ratio']), False)} dei ricavi in ricerca e sviluppo ({fmt_money(_v(m, 'rnd'), cur)}).", _pages(m, "rnd"), ["rnd"])
+        rr, rv = pct(c["rnd_ratio"]), money(_v(m, "rnd"), cur)
+        add(0.7 + c["rnd_ratio"],
+            t(f"Spende {art(rr, False)} dei ricavi in ricerca e sviluppo ({rv}).", f"Spends {rr} of revenue on research and development ({rv})."),
+            _pages(m, "rnd"), ["rnd"])
     if g["eps_diluted"] is not None:
-        add(0.9 + abs(g["eps_diluted"]) * 2, f"EPS diluito a {_ps(_v(m, 'eps_diluted'), cur)} ({fmt_pct(g['eps_diluted'], signed=True)}).", _pages(m, "eps_diluted"), ["eps_diluted"])
+        ev, eg = _ps(_v(m, "eps_diluted"), cur), pct(g["eps_diluted"], signed=True)
+        add(0.9 + abs(g["eps_diluted"]) * 2, t(f"EPS diluito a {ev} ({eg}).", f"Diluted EPS of {ev} ({eg})."), _pages(m, "eps_diluted"), ["eps_diluted"])
     out.sort(key=lambda x: -x[0])
     return [f for _, f in out]
 
