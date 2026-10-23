@@ -69,8 +69,9 @@ for XBRL filings. For other documents (KID, prospectus) it lists the main figure
 
 ## The spider
 
-Narrow black body with a blue outline and a cyan head, eight cyan legs of three segments with pink joints and feet
-that land on words (two alternating sets, never more than four legs in the air), a silk line trailing behind,
+Like a spider on a wall, it climbs straight down the middle of each page, head first, never sideways, hanging
+from a silk line, and reaches each figure with its pink line. Narrow black body with a blue outline and a cyan head, eight cyan legs of three segments with pink joints and feet
+that land on words (two alternating sets, never more than four legs in the air),
 pink and cyan pings to the words and numbers ahead of it, and neon highlights (outlines, fills, enlarged words,
 rotated strips).
 

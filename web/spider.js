@@ -167,7 +167,7 @@ export class Spider {
     const tail = { x: this.x - Math.cos(h) * 9 * U, y: this.y - Math.sin(h) * 9 * U };
     const a = this.silkAnchor;
     if (!a || Math.hypot(a.x - tail.x, a.y - tail.y) > 420 * U) {
-      const ang = h + Math.PI + (Math.random() - 0.5) * 0.6;
+      const ang = h + Math.PI + (Math.random() - 0.5) * 0.12;   // silk hangs almost straight up
       this.silkAnchor = { x: tail.x + Math.cos(ang) * 260 * U, y: tail.y + Math.min(-120 * U, Math.sin(ang) * 260 * U) };
     }
     ctx.lineCap = "round"; ctx.lineJoin = "round";

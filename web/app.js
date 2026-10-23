@@ -417,8 +417,11 @@ class Director {
 
   buildStops() {
     const a = this.a, stops = [];
+    this.lanes = {};
     for (const sec of this.doc.querySelectorAll(".sa-page")) {
       const n = +sec.dataset.page;
+      const pr = this.rectOf(sec);
+      this.lanes[n] = pr.x + pr.w / 2;
       const items = [];
       for (const el of sec.querySelectorAll("[data-h]")) {
         const range = this.doc.createRange();
@@ -462,6 +465,7 @@ class Director {
   plan() {
     const stops = this.allStops;
     const pts = stops.map((s) => this.anchor(s));
+    for (let i = 1; i < pts.length; i++) pts[i].y = Math.max(pts[i].y, pts[i - 1].y);   // only ever downwards
     const dwell = (s) => s.type === "h" || s.type === "page" ? BASE.head : s.fact.key ? BASE.key : BASE.fig;
     let prev = { x: pts[0].x, y: pts[0].y - 160 * this.U };
     const legs = stops.map((s, i) => {
@@ -487,11 +491,12 @@ class Director {
   }
 
   // the body stops just above what it reads, head pointing at it
+  // like a spider on a wall: it climbs straight down the middle of each page, never sideways,
+  // and reaches the figures with its pink line
   anchor(s) {
-    const U = this.U;
-    if (s.type === "page") return { x: s.r.x + 120 * U, y: s.r.y + 60 * U };
-    if (s.type === "h") return { x: s.r.x + Math.min(s.r.w / 2, 60 * U), y: s.r.y + s.r.h / 2 - 34 * U };
-    return { x: s.r.x + s.r.w / 2, y: s.r.y + s.r.h / 2 - 34 * U };
+    const x = this.lanes?.[s.page] ?? (s.r.x + s.r.w / 2);
+    if (s.type === "page") return { x, y: s.r.y + 60 * this.U };
+    return { x, y: s.r.y + s.r.h / 2 - 34 * this.U };
   }
 
   restart() {
@@ -557,7 +562,7 @@ class Director {
     }
     const goal = this.bodyAt(t);
     const seg = this.timeline?.[this.idx];
-    const face = seg && t < seg.t2 ? Math.atan2(seg.s.r.y + seg.s.r.h / 2 - this.spider.y, seg.s.r.x + seg.s.r.w / 2 - this.spider.x) : null;
+    const face = Math.PI / 2;            // always head down the wall
     if (!still) {
       this.spider.update(goal, dt, face);
       if (!this.done) { this.scan(t); this.fxTick(dt); }
