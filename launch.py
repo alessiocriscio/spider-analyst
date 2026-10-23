@@ -24,8 +24,11 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from analyst.i18n import ui  # noqa: E402  (standard library only: works before the venv exists)
+
+
+def ui(it, en):
+    """Terminal messages are always in English."""
+    return en
 
 ROOT = Path(__file__).resolve().parent
 PORT = int(os.environ.get("SPIDER_PORT", "8765"))

@@ -32,7 +32,7 @@ input[type=search], input[type=url], input[type=text], input[type=password], sel
 #home { display: flex; justify-content: center; padding: 48px 16px 80px; }
 .home-inner { width: 100%; max-width: 760px; }
 #hero-spider { display: block; margin: 0 0 4px -10px; }
-h1 { font: 700 46px/1.05 var(--serif); margin: 0 0 8px; letter-spacing: -0.01em; }
+h1 { font: 700 46px/1.05 var(--serif); margin: 0 0 2px; letter-spacing: -0.01em; }
 .warn { background: #fff4f4; border: 1.5px solid var(--down); color: #6b1a20; border-radius: 8px; padding: 12px 14px; margin: -8px 0 24px; font-size: 14px; }
 .lead { font: 19px/1.45 var(--serif); color: #3c3a4a; margin: 0 0 28px; max-width: 34em; }
 #search-form { display: flex; gap: 8px; }
@@ -152,3 +152,4 @@ dialog small { display: block; color: var(--muted); margin-top: 4px; }
 /* Italian interface: hide the English defaults until they are translated (a frame at most) */
 html[lang="it"]:not(.ui-ready) body { visibility: hidden; }
 dialog select { display: block; width: 100%; margin-top: 4px; }
+.byline { margin: 0 0 14px; color: var(--muted); font: italic 16px/1.3 var(--serif); }

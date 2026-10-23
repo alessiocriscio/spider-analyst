@@ -1,5 +1,7 @@
 # Spider Analyst
 
+*by Alessio Criscio*
+
 A spider reads a financial document on your computer: it walks over the words, the figures it reads light up
 and flow into a report that builds up live, and at the end it shows the key findings and a summary card where
 every number cites the page it comes from.
@@ -41,7 +43,7 @@ Close the terminal window (or press Ctrl+C) to stop it.
 |---|---|---|
 | US-listed companies (MSFT, NVDA, …) | Latest 10-K, 20-F or 40-F in inline XBRL | SEC EDGAR |
 | European companies (Ferrari, ENI, …) | ESEF annual report in inline XBRL | filings.xbrl.org |
-| Crypto, indices, currencies, commodities, ETFs, funds (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | A generated market sheet: chart, calendar-year and monthly returns, volatility, drawdowns | Yahoo Finance |
+| Crypto, indices, currencies, commodities, ETFs, funds (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | A generated market sheet: chart, calendar-year and monthly returns, volatility, drawdowns | Yahoo Finance (Coinbase as fallback for crypto) |
 | Any other document, in English or Italian: annual report or statements as PDF/HTML, KID, prospectus, factsheet, whitepaper | The file you upload (*Upload a document*) or the URL you paste | Your file / URL |
 
 In inline XBRL filings every figure is an XBRL tag, so its value and exact position are known — no guessing.
@@ -105,8 +107,10 @@ The server listens on `127.0.0.1` only. Documents and responses are cached in `.
 
 - Financial figures depend on the issuer's tags: rare or custom concepts may be missing (the card shows "—").
 - Free cash flow uses capex on property, plant and equipment; some companies also include intangibles.
-- Yahoo Finance has no official API and sometimes rate-limits (HTTP 429): the app retries with a session
-  cookie and on the second host; if it still fails, type the symbol directly (e.g. BTC-USD) and try again later.
+- Yahoo Finance has no official API. It rejects clients that do not look like a browser (HTTP 429), so the app
+  talks to it through `curl_cffi`, which presents itself as Chrome, with a session cookie and both hosts. For crypto
+  pairs (BTC-USD, ETH-EUR, …) the price history falls back to Coinbase's public API if Yahoo is still unavailable;
+  for indices, currencies and commodities Yahoo is the only source, so try again a few minutes later.
 
 ## Project layout
 

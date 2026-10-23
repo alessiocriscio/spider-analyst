@@ -212,7 +212,7 @@ def _ai_data(m: dict, d: dict, cur: str) -> dict:
 
 def from_market(symbol: str, meta: dict, progress: Progress) -> dict:
     progress(ui("Scarico lo storico prezzi", "Downloading the price history"), 0.3)
-    hist = sources.yahoo_history(symbol)
+    hist = sources.price_history(symbol)
     progress(ui("Calcolo rendimenti e rischio", "Computing returns and risk"), 0.6)
     r = market.build(hist)
     n = len(r["pages"])
@@ -227,8 +227,8 @@ def from_market(symbol: str, meta: dict, progress: Progress) -> dict:
         rows.setdefault(p, [])
     view = view_html([{"n": i + 1, "html": f'<div class="sheet">{h}</div>'} for i, h in enumerate(r["pages"])], market.CSS)
     a = {
-        "id": meta["id"], "kind": "market", "title": r["title"], "subtitle": r["subtitle"] + t(" · fonte Yahoo Finance", " · source Yahoo Finance"),
-        "source": f"https://finance.yahoo.com/quote/{symbol}", "currency": r["currency"],
+        "id": meta["id"], "kind": "market", "title": r["title"], "subtitle": r["subtitle"] + t(" · fonte ", " · source ") + hist.get("source", "Yahoo Finance"),
+        "source": f"https://finance.yahoo.com/quote/{symbol}" if hist.get("source", "Yahoo Finance") == "Yahoo Finance" else f"https://exchange.coinbase.com/trade/{hist['symbol']}", "currency": r["currency"],
         "pages": [{"n": p, "title": titles.get(p, t(f"Pagina {p}", f"Page {p}"))} for p in range(1, n + 1)], "total_pages": n,
         "cols": cols, "rows": rows, "facts": facts, "total_facts": len(r["facts"]), "headings": r["headings"],
         "findings": r["findings"][:6], "card": r["card"], "card_findings": r["findings"][:3], "checks": r["checks"],

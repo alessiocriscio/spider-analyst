@@ -279,22 +279,52 @@ ALIASES = {
 }
 
 
+_yahoo: Optional[object] = None
+
+
+def yahoo_client():
+    """Yahoo blocks clients whose TLS handshake is not a browser's (HTTP 429): curl_cffi impersonates Chrome.
+    Falls back to the plain httpx client if curl_cffi is not installed."""
+    global _yahoo
+    if _yahoo is None:
+        try:
+            from curl_cffi import requests as cffi
+            _yahoo = cffi.Session(impersonate="chrome", timeout=30)
+        except ImportError:
+            _yahoo = client()
+    return _yahoo
+
+
+def _yahoo_get(url: str, headers: dict):
+    try:
+        return yahoo_client().get(url, headers=headers)
+    except Exception as e:                    # httpx or curl_cffi network errors
+        raise ConnectionError(str(e)) from e
+
+
+def _yahoo_headers(accept: str) -> dict:
+    h = {"Accept": accept, "Accept-Language": "en-US,en;q=0.9", "Referer": "https://finance.yahoo.com/"}
+    if yahoo_client() is client():           # curl_cffi sends Chrome's own User-Agent
+        h["User-Agent"] = BROWSER_UA
+    return h
+
+
 def _yahoo_crumb(host: str) -> Optional[str]:
-    """Yahoo answers 401/429 to clients without its consent cookie and crumb: get them once."""
+    """Yahoo may also want its consent cookie and a crumb: get them once."""
     global _crumb
     with _crumb_lock:
         if _crumb:
             return _crumb
-        h = {"User-Agent": BROWSER_UA, "Accept": "text/html,application/json;q=0.9,*/*;q=0.8", "Accept-Language": "it-IT,it;q=0.9,en;q=0.8"}
+        h = _yahoo_headers("text/html,application/json;q=0.9,*/*;q=0.8")
         try:
-            client().get("https://fc.yahoo.com", headers=h)          # sets the A3 cookie (the page itself is a 404)
-        except httpx.HTTPError:
+            _yahoo_get("https://fc.yahoo.com", h)          # sets the A3 cookie (the page itself is a 404)
+        except ConnectionError:
             pass
         try:
-            r = client().get(f"{host}/v1/test/getcrumb", headers=h)
+            r = _yahoo_get(f"{host}/v1/test/getcrumb", h)
             if r.status_code == 200 and r.text and "<" not in r.text and len(r.text) < 40:
                 _crumb = r.text.strip()
-        except httpx.HTTPError:
+        except ConnectionError:
             pass
         return _crumb
 
@@ -305,8 +335,7 @@ def yahoo_json(path: str, params: dict, ttl: float):
     p = _cache_path(key)
     if p.exists() and time.time() - p.stat().st_mtime < ttl:
         return json.loads(p.read_bytes())
-    h = {"User-Agent": BROWSER_UA, "Accept": "application/json,text/plain,*/*", "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
-         "Referer": "https://finance.yahoo.com/", "Origin": "https://finance.yahoo.com"}
+    h = _yahoo_headers("application/json,text/plain,*/*")
     last = None
     for attempt in range(4):
         host = YQ_HOSTS[attempt % 2]
@@ -314,17 +343,20 @@ def yahoo_json(path: str, params: dict, ttl: float):
         if _crumb:
             q["crumb"] = _crumb
         try:
-            r = client().get(f"{host}{path}?" + urlencode(q), headers=h)
-        except httpx.HTTPError as e:
-            last = f"rete: {e}"
+            r = _yahoo_get(f"{host}{path}?" + urlencode(q), h)
+        except ConnectionError as e:
+            last = str(e)[:80]
             continue
         if r.status_code == 200:
-            data = r.json()
+            data = json.loads(r.content)
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(r.content)
             return data
         if r.status_code == 404:
-            return r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            try:
+                return json.loads(r.content)
+            except ValueError:
+                return {}
         last = str(r.status_code)
         if r.status_code in (401, 403, 429) and not _crumb:
             _yahoo_crumb(host)
@@ -332,11 +364,56 @@ def yahoo_json(path: str, params: dict, ttl: float):
     if p.exists():                                    # stale cache beats an error
         return json.loads(p.read_bytes())
     if last == "429":
-        raise SourceError(ui("Yahoo Finance sta limitando le richieste (429). Riprova tra qualche minuto, "
-                             "oppure scrivi direttamente il simbolo (es. BTC-USD, ^GSPC, EURUSD=X).",
-                             "Yahoo Finance is rate-limiting requests (429). Try again in a few minutes, "
-                             "or type the symbol directly (e.g. BTC-USD, ^GSPC, EURUSD=X)."))
+        raise SourceError(ui("Yahoo Finance sta limitando le richieste (429). Riprova tra qualche minuto.",
+                             "Yahoo Finance is rate-limiting requests (429). Try again in a few minutes."))
     raise SourceError(ui(f"Yahoo Finance non risponde ({last}).", f"Yahoo Finance is not responding ({last})."))
+
+
+# ---------------------------------------------------------------- Coinbase (crypto fallback, public, no key)
+
+CRYPTO = re.compile(r"^([A-Z0-9]{2,10})-(USD|EUR|GBP|USDT|USDC|BTC)$")
+
+
+def coinbase_history(symbol: str, years: int = 10) -> dict:
+    sym = symbol.upper()
+    if not CRYPTO.match(sym):
+        raise SourceError(f"{symbol}: not a crypto pair")
+    from datetime import datetime, timedelta, timezone
+    end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    rows: dict[str, float] = {}
+    for _ in range(int(years * 365 / 300) + 1):          # 300 daily candles per request
+        start = end - timedelta(days=300)
+        url = (f"https://api.exchange.coinbase.com/products/{sym}/candles?granularity=86400"
+               f"&start={start.strftime('%Y-%m-%dT%H:%M:%SZ')}&end={end.strftime('%Y-%m-%dT%H:%M:%SZ')}")
+        try:
+            batch = json.loads(fetch(url, ttl=6 * 3600))
+        except (SourceError, ValueError):
+            break
+        if not isinstance(batch, list) or not batch:
+            break
+        for c in batch:                                   # [time, low, high, open, close, volume]
+            rows[datetime.fromtimestamp(c[0], tz=timezone.utc).date().isoformat()] = float(c[4])
+        end = start
+    if len(rows) < 20:
+        raise SourceError(ui(f"Nessuno storico prezzi per {symbol}.", f"No price history for {symbol}."))
+    base, quote_cur = sym.split("-")
+    return {"symbol": sym, "name": base, "currency": quote_cur, "type": "CRYPTOCURRENCY", "exchange": "Coinbase",
+            "points": sorted(rows.items()), "source": "Coinbase"}
+
+
+def price_history(symbol: str) -> dict:
+    """Daily prices: Yahoo Finance, or Coinbase for crypto pairs when Yahoo is unavailable."""
+    try:
+        h = yahoo_history(symbol)
+        h.setdefault("source", "Yahoo Finance")
+        return h
+    except SourceError as e:
+        if CRYPTO.match(symbol.strip().upper()):
+            try:
+                return coinbase_history(symbol.strip())
+            except SourceError:
+                pass
+        raise e
 
 
 def looks_like_symbol(q: str) -> bool:

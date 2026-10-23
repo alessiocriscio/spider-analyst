@@ -48,7 +48,14 @@ def net(tmp_path, monkeypatch):
             return httpx.Response(200, json=ESEF_FILINGS)
         if u.startswith("https://fc.yahoo.com"):
             return httpx.Response(404, headers={"set-cookie": "A3=abc; Domain=.yahoo.com; Path=/"})
+        if "api.exchange.coinbase.com/products/BTC-USD/candles" in u:
+            if state.get("coinbase_done"):
+                return httpx.Response(200, json=[])
+            state["coinbase_done"] = True
+            return httpx.Response(200, json=[[1_700_000_000 + i * 86400, 1, 2, 1, 100 + i, 5] for i in range(300)][::-1])
         if "/v1/test/getcrumb" in u:
+            if state.get("yahoo_down"):
+                return httpx.Response(429)
             state["yahoo_limited"] = False
             return httpx.Response(200, text="Xy7crumb")
         if "finance.yahoo.com" in u:
@@ -61,11 +68,17 @@ def net(tmp_path, monkeypatch):
         return httpx.Response(404)
 
     monkeypatch.setattr(sources, "CACHE", tmp_path)
-    monkeypatch.setattr(sources, "_client", httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True))
+    mock = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    monkeypatch.setattr(sources, "_client", mock)
+    monkeypatch.setattr(sources, "_yahoo", mock)
     monkeypatch.setattr(sources, "_crumb", None)
     monkeypatch.setattr(sources.time, "sleep", lambda s: None)
     monkeypatch.setattr(pipeline, "DOCS", tmp_path / "docs")
+    net_state.update(state=state)
     return calls
+
+
+net_state = {}
 
 
 def test_sec(net):
@@ -91,3 +104,17 @@ def test_yahoo_recovers_from_429_with_crumb(net):
 def test_market_end_to_end(net):
     a = pipeline.run({"kind": "market", "symbol": "BTC-USD", "lang": "en"}, lambda *_: None)
     assert a["kind"] == "market" and a["lang"] == "en" and len(a["facts"]) >= 25
+
+
+def test_crypto_falls_back_to_coinbase_when_yahoo_blocks(net):
+    net_state["state"]["yahoo_down"] = True
+    h = sources.price_history("BTC-USD")
+    assert h["source"] == "Coinbase" and h["currency"] == "USD" and len(h["points"]) == 300
+    assert h["points"][0][0] < h["points"][-1][0]
+
+
+def test_non_crypto_reports_yahoo_error(net):
+    net_state["state"]["yahoo_down"] = True
+    import pytest as _p
+    with _p.raises(sources.SourceError, match="429"):
+        sources.price_history("^GSPC")

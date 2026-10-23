@@ -1,9 +1,10 @@
 fastapi>=0.115,<1.0
 uvicorn[standard]>=0.30,<1.0
 httpx>=0.27,<1.0
+curl_cffi>=0.7,<1.0
 lxml>=5.2,<7.0
 pypdfium2>=4.30,<6.0
 pillow>=10.0,<13.0
 python-multipart>=0.0.9,<1.0
-# Optional: Claude findings (used only when an Anthropic API key is configured)
+# Optional: Anthropic SDK (Claude findings); the other AI providers use plain HTTP
 anthropic>=2.0,<3.0

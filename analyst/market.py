@@ -275,9 +275,9 @@ def build(hist: dict, now: date | None = None) -> dict:
     risk_rows.append((L_WD, f"{dlabel(worst_day[0])}: " + S.f(L_WD, worst_day[1], pc(worst_day[1]), cls="neg")))
     risk_rows.append((L_BD, f"{dlabel(best_day[0])}: " + S.f(L_BD, best_day[1], pc(best_day[1]), cls="pos")))
     note = t("Rendimenti calcolati sui prezzi di chiusura rettificati (dividendi e frazionamenti inclusi quando disponibili). "
-             "La volatilità usa i rendimenti logaritmici giornalieri. Fonte: Yahoo Finance.",
+             f"La volatilità usa i rendimenti logaritmici giornalieri. Fonte: {hist.get('source', 'Yahoo Finance')}.",
              "Returns use adjusted closing prices (dividends and splits included where available). "
-             "Volatility uses daily log returns. Source: Yahoo Finance.")
+             f"Volatility uses daily log returns. Source: {hist.get('source', 'Yahoo Finance')}.")
     p4 = (S.h(t("Rischio", "Risk"), "h1") + S.h(t("Drawdown dal massimo precedente", "Drawdown from the previous high"))
           + _svg_line(dd_series, color="#c0392b", zero=True, fmt=lambda v: fmt_pct(v, 0))
           + "<table>" + "".join(f"<tr><td>{a}</td><td class='num'>{b}</td></tr>" for a, b in risk_rows) + "</table>"
