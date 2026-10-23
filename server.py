@@ -41,9 +41,23 @@ async def local_only(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def no_stale_app(request: Request, call_next):
+    # Safari keeps old scripts around: the app's own files are never cached
+    resp = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _version() -> str:
+    return str(int(max(p.stat().st_mtime for p in WEB.glob("*.*"))))
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-store"})
+    html = (WEB / "index.html").read_text(encoding="utf-8").replace("__V__", _version())
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 # ---------------------------------------------------------------- settings

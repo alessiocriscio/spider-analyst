@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Spider Analyst</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='18' r='8' fill='black' stroke='%23ff2e88' stroke-width='2'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v=__V__">
 </head>
 <body>
 
@@ -36,11 +36,6 @@
 
     <div class="opts">
       <label><input id="opt-ai" type="checkbox"> Osservazioni scritte da Claude</label>
-      <label>Velocità del ragno
-        <select id="opt-dur">
-          <option value="normale">Normale</option><option value="veloce" selected>Veloce</option><option value="turbo">Turbo</option>
-        </select>
-      </label>
       <button id="open-settings" type="button" class="link">Impostazioni</button>
     </div>
 
@@ -65,7 +60,6 @@
     <div class="ctrl">
       <button id="play" type="button">Avvia</button>
       <button id="restart" type="button">Ricomincia</button>
-      <select id="dur2" aria-label="Velocità"></select>
     </div>
   </header>
   <div id="frame">
@@ -79,7 +73,7 @@
       <div class="r-head">
         <h2 id="r-title"></h2>
         <p id="r-sub"></p>
-        <p id="r-count"><b id="r-n">0</b> di <span id="r-m">0</span> cifre lette</p>
+        <p id="r-count"><b id="r-n">0</b> di <span id="r-m">0</span> cifre lette<br><small id="r-pages"></small></p>
       </div>
       <div id="r-section">
         <h3 id="r-sec-title"></h3>
@@ -114,6 +108,6 @@
   </form>
 </dialog>
 
-<script type="module" src="/static/app.js"></script>
+<script type="module" src="/static/app.js?v=__V__"></script>
 </body>
 </html>

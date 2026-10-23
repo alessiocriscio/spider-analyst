@@ -1,5 +1,18 @@
 import { Spider, thread } from "./spider.js";
 
+// any unexpected error is shown on screen instead of leaving a still spider
+function showError(msg) {
+  let bar = document.getElementById("errbar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "errbar";
+    document.body.append(bar);
+  }
+  bar.textContent = "Qualcosa non ha funzionato: " + msg + " — ricarica la pagina (Cmd+R). Se si ripete, manda questo messaggio.";
+}
+window.addEventListener("error", (e) => showError(e.message || String(e.error)));
+window.addEventListener("unhandledrejection", (e) => showError(e.reason?.message || String(e.reason)));
+
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -155,13 +168,11 @@ const iframe = $("#doc"), stage = $("#stage"), layer = $("#doc-layer");
 const marksCv = $("#marks"), spiderCv = $("#spider");
 
 // seconds: stop on a figure / key figure / heading, walking factor, hop limits, finale step
-const PACES = {
-  normale: { fig: 0.28, key: 0.7, head: 0.45, walk: 0.034, minHop: 0.12, maxHop: 1.4, cam: 4, obs: 1600 },
-  veloce: { fig: 0.1, key: 0.3, head: 0.2, walk: 0.015, minHop: 0.06, maxHop: 0.6, cam: 7, obs: 1000 },
-  turbo: { fig: 0.04, key: 0.14, head: 0.1, walk: 0.008, minHop: 0.03, maxHop: 0.35, cam: 10, obs: 600 },
-};
-$("#dur2").innerHTML = $("#opt-dur").innerHTML;
-$("#dur2").addEventListener("change", () => { $("#opt-dur").value = $("#dur2").value; state.director?.restart(); });
+// base timing in seconds (stop on a figure / key figure / heading, walking factor, hop limits);
+// it is compressed automatically for long documents, never by skipping figures
+const BASE = { fig: 0.28, key: 0.7, head: 0.45, walk: 0.034, minHop: 0.12, maxHop: 1.4 };
+// target reading time: about 20 s for a short document, at most ~2 min for a long one
+const targetSeconds = (n) => Math.max(20, Math.min(120, 10 + n * 0.22));
 $("#back").addEventListener("click", () => { state.director?.stop(); show("home"); loadRecent(); });
 $("#play").addEventListener("click", () => state.director?.toggle());
 $("#restart").addEventListener("click", () => state.director?.restart());
@@ -170,10 +181,13 @@ async function openAnalysis(id) {
   const a = await api("/api/doc/" + id);
   state.analysis = a;
   show("reader");
-  $("#dur2").value = $("#opt-dur").value;
   $("#r-title").textContent = a.title;
   $("#r-sub").textContent = a.subtitle;
-  $("#r-m").textContent = a.total_facts.toLocaleString("it-IT");
+  $("#r-m").textContent = Object.keys(a.facts).length.toLocaleString("it-IT");
+  const shown = a.pages.map((p) => p.n);
+  $("#r-pages").textContent = a.total_pages > shown.length
+    ? `Pagine lette: ${shown.join(", ")} di ${a.total_pages} (quelle con i prospetti e le cifre principali)`
+    : `Pagine lette: tutte (${a.total_pages})`;
   $("#r-warn").textContent = (a.warnings || []).join(" ");
   state.director?.stop();
   await new Promise((res) => { iframe.onload = res; iframe.src = `/api/doc/${id}/view`; });
@@ -272,27 +286,31 @@ class Director {
     return null;
   }
 
-  // every figure is visited; the pace only changes how long the spider stops and how fast it runs
-  plan(pace) {
-    const P = PACES[pace] || PACES.veloce;
+  // every figure is visited; the pace adapts to how many there are
+  plan() {
     const stops = this.allStops;
-    const dwell = (s) => s.type === "h" ? P.head : s.type === "page" ? P.head : s.fact.key ? P.key : P.fig;
     const pts = stops.map((s) => this.anchor(s));
+    const dwell = (s) => s.type === "h" || s.type === "page" ? BASE.head : s.fact.key ? BASE.key : BASE.fig;
     let prev = { x: pts[0].x - 140, y: pts[0].y - 160 };
-    let t = 0;
-    this.timeline = stops.map((s, i) => {
+    const legs = stops.map((s, i) => {
       const d = Math.hypot(pts[i].x - prev.x, pts[i].y - prev.y);
       prev = pts[i];
       // walking time grows with sqrt(distance): short hops are quick and page jumps don't drag
-      const travel = Math.min(P.maxHop, Math.max(P.minHop, P.walk * Math.sqrt(d)));
-      const seg = { s, p: pts[i], t0: t, t1: t + travel, t2: t + travel + dwell(s) };
+      return [Math.min(BASE.maxHop, Math.max(BASE.minHop, BASE.walk * Math.sqrt(d))), dwell(s)];
+    });
+    const natural = legs.reduce((t, [a, b]) => t + a + b, 0);
+    const figures = stops.filter((s) => s.type === "f").length;
+    const k = Math.max(0.12, Math.min(1, targetSeconds(figures) / natural));
+    let t = 0;
+    this.timeline = stops.map((s, i) => {
+      const seg = { s, p: pts[i], t0: t, t1: t + legs[i][0] * k, t2: t + (legs[i][0] + legs[i][1]) * k };
       t = seg.t2;
       return seg;
     });
     this.start0 = { x: pts[0].x - 140, y: pts[0].y - 160 };
     this.planned = new Set(stops.filter((x) => x.type === "f").map((x) => String(x.id)));
     this.total = t;
-    this.pace = P;
+    this.pace = { k, fig: BASE.fig * k, key: BASE.key * k, cam: Math.min(10, 4 / Math.sqrt(k)), obs: Math.max(800, 1600 * Math.sqrt(k)) };
   }
 
   anchor(s) {
@@ -333,9 +351,8 @@ class Director {
   restart() {
     this.stop();
     $("#finale").hidden = true; $("#finale").innerHTML = "";
-    this.paceName = $("#opt-dur").value;
     this.relayout();
-    this.plan(this.paceName);
+    this.plan();
     this.clock = 0; this.idx = -1; this.touched = []; this.marks = []; this.threads = []; this.done = false;
     this.count = 0; this.page = null;
     $("#r-n").textContent = "0";

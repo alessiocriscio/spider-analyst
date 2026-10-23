@@ -39,8 +39,9 @@ per i bilanci XBRL. Per altri documenti (KID, prospetti) elenca le cifre princip
 
 ## Velocità
 
-Il ragno legge sempre **tutte** le cifre delle pagine che mostra: la velocità (Normale, Veloce, Turbo) cambia solo
-quanto si ferma su ogni cifra e quanto corre tra una e l'altra.
+Automatica: il ragno legge sempre **tutte** le cifre delle pagine che apre e regola il ritmo sul loro numero
+(circa 20 secondi per un documento corto, fino a circa 2 minuti per uno lungo). Il contatore “N di M cifre lette”
+conta le cifre di quelle pagine; sotto è indicato quali pagine del documento sono state lette.
 
 ## Report
 
