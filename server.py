@@ -7,9 +7,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess
-import tempfile
 import threading
 import time
 import uuid
@@ -20,7 +17,6 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from starlette.background import BackgroundTask
 
 from analyst import ai, pipeline, sources
 
@@ -57,7 +53,7 @@ def status():
     cfg = sources.config()
     return {"ai": ai.available(), "ai_key": bool(ai.api_key()), "sec_user_agent": sources.sec_user_agent(),
             "sec_ua_custom": bool(os.environ.get("SPIDER_SEC_UA") or cfg.get("sec_user_agent")),
-            "ffmpeg": bool(shutil.which("ffmpeg")), "model": ai.MODEL}
+            "model": ai.MODEL}
 
 
 @app.post("/api/settings")
@@ -221,30 +217,6 @@ def asset(u: str):
 def ixbrl_hosts():
     from analyst.ixbrl import ASSET_HOSTS
     return ASSET_HOSTS
-
-
-# ---------------------------------------------------------------- recording
-
-@app.post("/api/convert")
-async def convert(file: UploadFile = File(...)):
-    """WebM from the browser recorder -> MP4 (H.264/AAC) with ffmpeg."""
-    ff = shutil.which("ffmpeg")
-    if not ff:
-        raise HTTPException(501, "ffmpeg non installato: il video resta in WebM (installa con: brew install ffmpeg)")
-    tmp = Path(tempfile.mkdtemp(prefix="spider-"))
-    src, dst = tmp / "in.webm", tmp / "spider-analyst.mp4"
-    with open(src, "wb") as fh:
-        while chunk := await file.read(1 << 20):
-            fh.write(chunk)
-    cmd = [ff, "-y", "-loglevel", "error", "-i", str(src), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-           "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-r", "30", "-movflags", "+faststart",
-           "-c:a", "aac", "-b:a", "128k", str(dst)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-    if proc.returncode != 0 or not dst.exists():
-        shutil.rmtree(tmp, True)
-        raise HTTPException(500, f"ffmpeg: {proc.stderr[-400:]}")
-    return FileResponse(dst, media_type="video/mp4", filename="spider-analyst.mp4",
-                        background=BackgroundTask(shutil.rmtree, tmp, True))
 
 
 if __name__ == "__main__":

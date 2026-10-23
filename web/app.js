@@ -159,11 +159,6 @@ $("#dur2").addEventListener("change", () => { $("#opt-dur").value = $("#dur2").v
 $("#back").addEventListener("click", () => { state.director?.stop(); show("home"); loadRecent(); });
 $("#play").addEventListener("click", () => state.director?.toggle());
 $("#restart").addEventListener("click", () => state.director?.restart());
-$("#video-mode").addEventListener("change", () => {
-  document.body.classList.toggle("video", $("#video-mode").checked);
-  state.director?.relayout();
-});
-$("#record").addEventListener("click", () => recorder.toggle());
 
 async function openAnalysis(id) {
   const a = await api("/api/doc/" + id);
@@ -213,12 +208,11 @@ class Director {
   relayout() {
     const W = stage.clientWidth, H = stage.clientHeight, dpr = devicePixelRatio || 1;
     for (const cv of [marksCv, spiderCv]) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
-    const video = document.body.classList.contains("video");
-    // fit the widest page; in 9:16 zoom in and pan sideways with the spider
+    // fit the widest page
     const pageW = Math.max(...[...this.doc.querySelectorAll(".sa-page")].map((p) => p.getBoundingClientRect().width), 600);
-    this.scale = Math.min(video ? 1.4 : 1.15, (W - 24) / pageW * (video ? 1.7 : 1));
+    this.scale = Math.min(1.15, (W - 24) / pageW);
     this.W = W; this.H = H; this.dpr = dpr;
-    this.spider.size = (video ? 26 : 32) / this.scale;
+    this.spider.size = 32 / this.scale;
     if (!this.playing && this.timeline) this.frame(performance.now(), true);
   }
 
@@ -553,7 +547,6 @@ class Director {
     box.querySelector(".card").classList.add("in");
     this.stop();
     $("#play").textContent = "Rivedi";
-    recorder.finished();
   }
 }
 
@@ -562,69 +555,6 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-}
-
-// ------------------------------------------------------------------ recording
-
-const recorder = {
-  rec: null, stream: null, chunks: [], auto: false,
-  async toggle() { this.rec ? this.end() : this.begin(); },
-  async begin() {
-    if (!navigator.mediaDevices?.getDisplayMedia) return alert("Questo browser non può registrare lo schermo. Usa Chrome.");
-    try {
-      this.stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 30, displaySurface: "browser" }, audio: false, preferCurrentTab: true, selfBrowserSurface: "include",
-      });
-    } catch { return; }
-    const [track] = this.stream.getVideoTracks();
-    // crop to the reading area only (Chrome); elsewhere the whole tab is recorded
-    if (window.CropTarget && track.cropTo) {
-      try { await track.cropTo(await CropTarget.fromElement($("#frame"))); } catch {}
-    }
-    const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find((m) => MediaRecorder.isTypeSupported(m));
-    this.chunks = [];
-    this.rec = new MediaRecorder(this.stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
-    this.rec.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
-    this.rec.onstop = () => this.save(mime);
-    track.onended = () => this.end();
-    this.rec.start(500);
-    $("#record").classList.add("on"); $("#record").textContent = "Ferma registrazione"; $("#rec-dot").hidden = false;
-    this.auto = true;
-    await sleep(400);
-    state.director?.restart();
-  },
-  finished() { if (this.rec && this.auto) setTimeout(() => this.end(), 3500); },
-  end() {
-    if (!this.rec) return;
-    this.auto = false;
-    if (this.rec.state !== "inactive") this.rec.stop();
-    this.stream.getTracks().forEach((t) => t.stop());
-    this.rec = null;
-    $("#record").classList.remove("on"); $("#record").textContent = "Registra video"; $("#rec-dot").hidden = true;
-  },
-  async save(mime) {
-    const blob = new Blob(this.chunks, { type: mime });
-    const name = (state.analysis?.title || "spider").replace(/[^\w-]+/g, "-").toLowerCase();
-    if (mime.startsWith("video/mp4")) return download(blob, name + ".mp4");
-    $("#record").textContent = "Converto in MP4…";
-    try {
-      const fd = new FormData(); fd.append("file", blob, "rec.webm");
-      const r = await fetch("/api/convert", { method: "POST", body: fd });
-      if (!r.ok) throw new Error((await r.json()).detail);
-      download(await r.blob(), name + ".mp4");
-    } catch (err) {
-      download(blob, name + ".webm");
-      alert("Video salvato in WebM. " + err.message);
-    }
-    $("#record").textContent = "Registra video";
-  },
-};
-
-function download(blob, name) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = name;
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 
 // ------------------------------------------------------------------ hero spider (home)

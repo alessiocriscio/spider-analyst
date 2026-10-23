@@ -57,10 +57,6 @@ json.dump({"sec_user_agent": ua} if ua else {}, open(path, "w"), indent=2)
 PY
 fi
 
-if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "Nota: ffmpeg non è installato, i video registrati verranno salvati in WebM (per MP4: brew install ffmpeg)."
-fi
-
 echo "Avvio Spider Analyst su $URL  (chiudi questa finestra per fermarlo)"
 .venv/bin/python server.py &
 SERVER=$!

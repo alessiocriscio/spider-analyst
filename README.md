@@ -13,7 +13,7 @@ riassuntiva in cui ogni numero indica la pagina da cui viene.
 2. Doppio clic su **`Avvia Spider Analyst.command`**. Se macOS lo blocca: tasto destro → Apri → Apri.
    Al primo avvio prepara l'ambiente (`.venv`), installa le dipendenze e chiede un nome e un'email per la SEC
    (puoi lasciare vuoto).
-3. Si apre il browser su `http://127.0.0.1:8765`. Per registrare il video usa **Chrome**.
+3. Si apre il browser su `http://127.0.0.1:8765`.
 
 Da terminale: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python server.py`.
 
@@ -47,12 +47,6 @@ un identificativo; ogni osservazione che contiene un numero non presente tra le 
 Sui PDF sceglie le cifre importanti tra quelle trovate sulle pagine. Senza chiave tutto il resto funziona.
 La chiave resta in `~/.spider-analyst/anthropic_key` (permessi 600).
 
-## Video
-
-- **Formato video 9:16** impagina documento e report in verticale.
-- **Registra video** (Chrome): scegli “questa scheda”; la registrazione riparte dall'inizio, si ferma da sola
-  dopo la scheda finale e scarica un MP4 (con `ffmpeg`, `brew install ffmpeg`) o un WebM.
-
 ## Dati e privacy
 
 Il server ascolta solo su `127.0.0.1`. Documenti e risposte vengono messi in cache in `.data/`.
@@ -65,7 +59,6 @@ inviata se non la inserisci tu.
   (la scheda mostra “—”).
 - Il free cash flow usa il capex in immobilizzazioni materiali; alcune società includono anche le immateriali.
 - Yahoo Finance non ha un'API ufficiale: se cambia formato la scheda di mercato smette di funzionare.
-- La registrazione con ritaglio dell'area è solo su Chrome; su Safari registra l'intera scheda.
 
 ## Test
 

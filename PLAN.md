@@ -14,7 +14,7 @@ Requisito dell'utente: deve funzionare su **qualsiasi strumento finanziario** e 
 - [x] `analyst/generic.py` — PDF (immagine + strato di parole) e HTML senza tag
 - [x] `analyst/ai.py` — Claude opzionale, solo cifre già lette, validazione numerica
 - [x] `analyst/pipeline.py` — formato unico per l'interfaccia, `view.html` sanificato
-- [x] `server.py`, `web/` — ragno IK su canvas, regia, report live, finale, 9:16, registrazione MP4
+- [x] `server.py`, `web/` — ragno IK su canvas, regia, report live, finale
 - [x] `Avvia Spider Analyst.command`, `README.md`, test offline (`tests/`)
 - [ ] Prova con dati reali (MSFT 10-K, Ferrari ESEF, BTC-USD): la sessione cloud di sviluppo non raggiungeva
       sec.gov / filings.xbrl.org / Yahoo (proxy 403). Da verificare sul Mac.
