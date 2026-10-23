@@ -2,9 +2,7 @@
 
 *by Alessio Criscio*
 
-A spider reads a financial document on your computer: it walks over the words, the figures it reads light up
-and flow into a report that builds up live, and at the end it shows the key findings and a summary card where
-every number cites the page it comes from.
+Spider Analyst: an animated spider reads financial documents (10-K, ESEF, PDFs, market data) and builds a live report. Runs locally on macOS, Windows and Linux in a Chromium browser. Completely Open Source and free.
 
 A from-scratch rebuild of the idea shown in @buildwithbrock's videos. It contains none of his code.
 
