@@ -216,8 +216,12 @@ def _label_figures(words: list[dict]) -> list[dict]:
     out = []
     lines = _lines(words)
     for li, ln in enumerate(lines):
+        # a 1-2 digit number on a row of formatted amounts is a note reference, not a figure
+        amounts = sum(1 for w in ln if is_figure(w["t"]) and re.search(r"\d[.,]\d", w["t"]))
         for k, wd in enumerate(ln):
             if not is_figure(wd["t"], allow_digit=True):
+                continue
+            if amounts >= 2 and re.fullmatch(r"\d{1,2}", wd["t"]):
                 continue
             label_words = [w["t"] for w in ln[:k] if not is_figure(w["t"]) and not re.fullmatch(r"[\W\d]+", w["t"])][-9:]
             label = " ".join(label_words)

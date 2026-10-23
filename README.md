@@ -10,7 +10,11 @@ riassuntiva in cui ogni numero indica la pagina da cui viene.
 
 1. Serve Python 3.10 o più recente: `python3 --version`. Se manca, installalo da
    [python.org](https://www.python.org/downloads/macos/) oppure con `brew install python`.
-2. Doppio clic su **`Avvia Spider Analyst.command`**. Se macOS lo blocca: tasto destro → Apri → Apri.
+2. Avvia dal Terminale (funziona sempre, anche se macOS blocca il doppio clic):
+   apri **Terminale**, scrivi `bash ` (con lo spazio), trascina nella finestra il file
+   **`Avvia Spider Analyst.command`** e premi Invio.
+   In alternativa: doppio clic sul file; se macOS dice che non può verificarlo, vai in
+   **Impostazioni di Sistema → Privacy e sicurezza**, in fondo clicca **Apri comunque**, poi riprova.
    Al primo avvio prepara l'ambiente (`.venv`), installa le dipendenze e chiede un nome e un'email per la SEC
    (puoi lasciare vuoto).
 3. Si apre il browser su `http://127.0.0.1:8765`.
@@ -24,11 +28,14 @@ Da terminale: `python3 -m venv .venv && .venv/bin/pip install -r requirements.tx
 | Azioni USA ed emittenti esteri quotati in USA (MSFT, AAPL, …) | Ultimo 10-K, 20-F o 40-F in iXBRL | SEC EDGAR |
 | Società europee (Ferrari, ENI, …) | Relazione annuale ESEF in iXBRL | filings.xbrl.org |
 | Crypto, indici, valute, materie prime, ETF, fondi (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | Scheda di mercato generata: grafico, rendimenti annuali e mensili, volatilità, drawdown | Yahoo Finance |
-| Qualsiasi altro documento: KID, prospetto, factsheet, whitepaper, bilancio in PDF | Il file che carichi o l'URL che incolli | Tuo file / URL |
+| Qualsiasi altro documento, in italiano o in inglese: bilancio o annual report in PDF/HTML, KID, prospetto, factsheet, whitepaper | Il file che carichi (riquadro “Carica un documento”) o l'URL che incolli | Tuo file / URL |
 
 Nei bilanci iXBRL ogni cifra è un tag XBRL: valore e posizione esatta sono certi, nessuna lettura “a occhio”.
-Su PDF e HTML senza tag le cifre sono trovate con regole euristiche (o scelte da Claude, vedi sotto) e
-restano sempre cifre presenti nel testo della pagina.
+Su PDF e HTML senza tag le cifre sono quelle scritte sulla pagina. Nei bilanci (in inglese o in italiano) il ragno
+riconosce le voci dalle etichette di riga — Revenue / Ricavi, Net income / Utile netto, Diluted EPS, Net cash
+provided by operating activities, Purchases of property, plant and equipment… — legge le colonne anno corrente
+e precedente e la scala (“in millions”, “in migliaia di euro”), e calcola scheda, controlli e osservazioni come
+per i bilanci XBRL. Per altri documenti (KID, prospetti) elenca le cifre principali, o le sceglie Claude.
 
 ## Report
 

@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import ai, financials as F, generic, ixbrl, market, sources
+from . import ai, financials as F, generic, ixbrl, market, sources, statements
 
 DOCS = sources.CACHE / "docs"
 Progress = Callable[[str, float], None]
@@ -246,7 +246,9 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
         raise sources.SourceError("Non ho trovato cifre leggibili in questo documento (un PDF scansionato senza testo?).")
     facts = {f["id"]: {"label": f["label"], "display": f["display"], "value_fmt": f["display"], "page": f["page"],
                        "key": f["key"], "metric": None, "role": "cur"} for f in g["facts"]}
-    title = g.get("title") if (g.get("title") or "").lower() not in ("", "untitled") else ((g.get("info") or {}).get("EntityRegistrantName") or name)
+    first_heading = next((h["text"] for h in g["headings"] if h["page"] == g["pages"][0]["n"]), "")
+    title = g.get("title") if (g.get("title") or "").lower() not in ("", "untitled") else \
+        ((g.get("info") or {}).get("EntityRegistrantName") or first_heading or name)
     kind_label = "Documento"
     finds, card, ai_used = [], [], False
     if use_ai and ai.available():
@@ -268,6 +270,15 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
                 fid = int(pick["id"])
                 facts[fid]["label"], facts[fid]["key"] = pick["label"], True
             finds = res["observations"]
+    stmt = _statement_view(g, facts, finds)
+    if stmt:
+        return save({**stmt, "id": meta["id"], "kind": "pdf" if is_pdf else "html", "title": title,
+                     "subtitle": " · ".join(x for x in (kind_label if ai_used else "Bilancio", f"{g['total_pages']} pagine",
+                                                        "voci riconosciute dal testo") if x),
+                     "source": url or name, "total_pages": g["total_pages"], "total_facts": len(g["facts"]),
+                     "headings": g["headings"], "facts": facts,
+                     "pages": [{"n": p["n"], "title": next((h["text"] for h in g["headings"] if h["page"] == p["n"]), f"Pagina {p['n']}")} for p in g["pages"]],
+                     "warnings": meta.get("warnings", []), "ai": ai_used}, view_html(g["pages"], g["css"], flush=is_pdf))
     keyed = sorted((f for f in g["facts"] if facts[f["id"]]["key"]), key=lambda f: -f["score"]) if not ai_used else \
         [next(x for x in g["facts"] if x["id"] == int(p["id"])) for p in res["figures"]]
     if not finds:
@@ -292,6 +303,30 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
         "ai": ai_used,
     }
     return save(a, view)
+
+
+def _statement_view(g: dict, facts: dict, ai_finds: list) -> Optional[dict]:
+    """English or Italian financial statements without XBRL tags: same card, checks and findings as iXBRL."""
+    texts = {p["n"]: t for p, t in zip(g["pages"], g["page_text"])}
+    x = statements.extract(g["facts"], texts)
+    m, cur = x["metrics"], x["currency"]
+    if len(m) < 3 or not ({"revenue", "net_income"} & set(m)):
+        return None
+    d = F.derive(m)
+    y_cur, y_prev = (str(x["years"][0]), str(x["years"][1])) if x["years"] else ("Anno corrente", "Anno precedente")
+    rows: dict = {}
+    for key, mm in m.items():
+        for which in ("cur", "prev"):
+            if mm.get(which):
+                f = facts[mm[which]["id"]]
+                f.update(label=F.METRICS[key][0], key=True, metric=key, role=which,
+                         value_fmt=F.fmt_value(key, mm[which]["value"], cur))
+        p = mm["cur"]["page"]
+        rows.setdefault(p, []).append({"label": F.METRICS[key][0], "cells": [mm["cur"]["id"], mm["prev"]["id"] if mm.get("prev") else None]})
+    finds = ai_finds or F.findings(m, d, cur)
+    return {"currency": cur, "cols": {p["n"]: [y_cur, y_prev] for p in g["pages"]},
+            "rows": {p["n"]: rows.get(p["n"], []) for p in g["pages"]},
+            "findings": finds[:6], "card_findings": finds[:3], "card": F.card(m, d, cur), "checks": F.checks(m)}
 
 
 def _short(label: str, n: int = 38) -> str:

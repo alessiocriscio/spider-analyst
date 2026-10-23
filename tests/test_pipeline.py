@@ -112,3 +112,47 @@ def test_sec_user_agent_is_generic_by_default(monkeypatch):
     monkeypatch.delenv("SPIDER_SEC_UA", raising=False)
     monkeypatch.setattr(sources, "config", lambda: {})
     assert "@" in sources.sec_user_agent() and "example.com" in sources.sec_user_agent()
+
+
+def test_statement_labels_en_it():
+    from analyst import statements as S
+    assert S.match("Net sales") == "revenue" and S.match("Ricavi netti") == "revenue"
+    assert S.match("Net income attributable to shareholders") == "net_income"
+    assert S.match("Utile netto dell'esercizio") == "net_income"
+    assert S.match("Net cash provided by operating activities") == "cfo"
+    assert S.match("Flusso di cassa netto generato dalle attività operative") == "cfo"
+    assert S.match("Purchases of property, plant and equipment") == "capex"
+    assert S.match("Total shareholders’ equity") == "equity"
+    assert S.match("Letter to shareholders") is None
+    assert S.page_scale("(in millions of U.S. dollars)") == 1e6 and S.page_scale("(in migliaia di euro)") == 1e3
+
+
+def test_english_pdf_annual_report():
+    pytest.importorskip("reportlab")
+    import make_pdf_en  # noqa: F401  (writes fixtures/annual_en.pdf)
+    a = pipeline.run({"kind": "upload", "data": (FIX / "annual_en.pdf").read_bytes(), "name": "annual_en.pdf"}, lambda *_: None)
+    card = {t["key"]: t for t in a["card"]}
+    assert a["title"] == "Northwind Instruments Inc."
+    assert card["revenue"]["yoy_display"] == "+11,2%" and card["eps_diluted"]["display"] == "$4,12"
+    assert card["fcf"]["display"] == "$2,2 mld"           # 2,900 − 700 million
+    assert all(c["ok"] for c in a["checks"]) and len(a["checks"]) >= 3
+
+
+def test_english_html_table_report():
+    html = b"""<html><body><h2>Consolidated Statement of Income</h2><p>(in thousands of euros)</p><table>
+    <tr><td></td><td>2025</td><td>2024</td></tr>
+    <tr><td>Revenue</td><td>500,000</td><td>400,000</td></tr>
+    <tr><td>Operating profit</td><td>90,000</td><td>70,000</td></tr>
+    <tr><td>Profit for the year</td><td>60,000</td><td>45,000</td></tr>
+    <tr><td>Total assets</td><td>900,000</td><td>850,000</td></tr></table></body></html>"""
+    a = pipeline.run({"kind": "upload", "data": html, "name": "report.html"}, lambda *_: None)
+    assert a["cols"][1] == ["2025", "2024"]
+    card = {t["key"]: t for t in a["card"]}
+    assert a["currency"] == "EUR" and card["revenue"]["display"] == "€500 mln" and card["revenue"]["yoy_display"] == "+25,0%"
+
+
+def test_pdf_note_references_are_not_figures(tmp_path):
+    pytest.importorskip("reportlab")
+    import make_pdf_en  # noqa: F401
+    g = generic.pdf_document((FIX / "annual_en.pdf").read_bytes(), tmp_path, "/img")
+    assert not [f for f in g["facts"] if f["display"] in ("4", "9")]
