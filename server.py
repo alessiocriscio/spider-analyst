@@ -225,6 +225,34 @@ def report_pdf(aid: str):
                              "Cache-Control": "no-store"})
 
 
+@app.get("/api/original")
+def original(kind: str, query: str = "", symbol: str = ""):
+    """The original document behind a search result: the SEC filing, the ESEF report, or the price history as CSV."""
+    try:
+        if kind == "sec":
+            f = sources.sec_latest(query)
+            data = sources.fetch(f["url"], ttl=None)
+            ext = f["url"].rsplit(".", 1)[-1].lower() if "." in f["url"].rsplit("/", 1)[-1] else "htm"
+            name = f"{f.get('ticker') or query}-{f.get('form', 'filing')}-{f.get('period') or f.get('filed', '')}.{ext}"
+            media = "text/html" if ext in ("htm", "html") else "application/octet-stream"
+        elif kind == "esef":
+            f = sources.esef_latest(query)
+            data = sources.fetch(f["url"], ttl=None)
+            fname = f["url"].rsplit("/", 1)[-1] or "report.xhtml"
+            name, media = fname, "application/xhtml+xml" if fname.endswith(("xhtml", "html")) else "application/octet-stream"
+        elif kind == "market":
+            h = sources.price_history(symbol)
+            lines = ["date,close,currency,source"] + [f"{d},{v:.8g},{h.get('currency', '')},{h.get('source', '')}" for d, v in h["points"]]
+            data = ("\n".join(lines) + "\n").encode()
+            name, media = f"{h['symbol']}-daily-prices.csv", "text/csv"
+        else:
+            raise HTTPException(400, ui("richiesta non valida", "invalid request"))
+    except sources.SourceError as e:
+        raise HTTPException(502, str(e))
+    safe = re.sub(r"[^\w.^=-]+", "-", name).strip("-") or "document"
+    return Response(data, media_type=media, headers={"Content-Disposition": f'attachment; filename="{safe}"'})
+
+
 @app.get("/api/recent")
 def recent():
     out = []

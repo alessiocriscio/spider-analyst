@@ -19,9 +19,11 @@ const UI = {
     error: (m) => `Something went wrong: ${m} — reload the page (Cmd+R / Ctrl+R). If it happens again, send this message.`,
     need_key: "Add an API key (Anthropic, OpenAI, Gemini, OpenRouter…) in Settings",
     searching: (q) => `Searching for “${q}” on SEC EDGAR, filings.xbrl.org and Yahoo Finance…`,
-    g_sec: "US annual report", g_sec_src: "SEC EDGAR: latest 10-K, 20-F or 40-F", read_filing: "Reads the filing",
-    g_esef: "European annual report", g_esef_src: "ESEF from filings.xbrl.org", read_report: "Reads the report",
+    g_sec: "US annual report", g_sec_src: "SEC EDGAR: latest 10-K, 20-F or 40-F", read_filing: "Analyse",
+    g_esef: "European annual report", g_esef_src: "ESEF from filings.xbrl.org", read_report: "Analyse",
     g_market: "Markets", g_market_src: "Sheet generated from the Yahoo Finance price history",
+    orig: "Download original", orig_csv: "Download prices (CSV)", orig_busy: "Downloading…", orig_failed: "Download failed:",
+    orig_title: "The original document as published (SEC / ESEF)", orig_csv_title: "Daily price history as a CSV file",
     no_results: "No results. Try the ticker (e.g. MSFT, RACE.MI, BTC-USD) or upload the document directly.",
     uploading: (n) => `Uploading ${n}`, preparing: "Preparing the document", not_started: "The reading did not start",
     recent: "Recently read", key_saved: "Key saved for this provider. Leave empty to keep it; type “remove” to delete it.",
@@ -42,9 +44,11 @@ const UI = {
     error: (m) => `Qualcosa non ha funzionato: ${m} — ricarica la pagina (Cmd+R / Ctrl+R). Se si ripete, manda questo messaggio.`,
     need_key: "Aggiungi una chiave API (Anthropic, OpenAI, Gemini, OpenRouter…) nelle impostazioni",
     searching: (q) => `Cerco «${q}» su SEC EDGAR, filings.xbrl.org e Yahoo Finance…`,
-    g_sec: "Bilancio annuale USA", g_sec_src: "SEC EDGAR: 10-K, 20-F o 40-F più recente", read_filing: "Legge il bilancio",
-    g_esef: "Relazione annuale europea", g_esef_src: "ESEF da filings.xbrl.org", read_report: "Legge la relazione",
+    g_sec: "Bilancio annuale USA", g_sec_src: "SEC EDGAR: 10-K, 20-F o 40-F più recente", read_filing: "Analizza",
+    g_esef: "Relazione annuale europea", g_esef_src: "ESEF da filings.xbrl.org", read_report: "Analizza",
     g_market: "Mercati", g_market_src: "Scheda generata dallo storico prezzi Yahoo Finance",
+    orig: "Scarica originale", orig_csv: "Scarica prezzi (CSV)", orig_busy: "Scarico…", orig_failed: "Download non riuscito:",
+    orig_title: "Il documento originale così come pubblicato (SEC / ESEF)", orig_csv_title: "Storico prezzi giornaliero in un file CSV",
     no_results: "Nessun risultato. Prova con il ticker (es. MSFT, RACE.MI, BTC-USD) o carica direttamente il documento.",
     uploading: (n) => `Carico ${n}`, preparing: "Preparo il documento", not_started: "La lettura non è partita",
     recent: "Letti di recente", key_saved: "Chiave salvata per questo fornitore. Lascia vuoto per non cambiarla; scrivi «rimuovi» per cancellarla.",
@@ -132,7 +136,7 @@ function renderResults(res) {
   if (res.esef.length) parts.push(group(tr("g_esef"), tr("g_esef_src"), res.esef.map((e) =>
     hit({ kind: "esef", query: e.lei }, e.name, e.country, tr("read_report")))));
   if (res.market.length) parts.push(group(tr("g_market"), tr("g_market_src"), res.market.map((m) =>
-    hit({ kind: "market", symbol: m.symbol }, m.name, m.symbol, `${m.type_label}${m.exchange ? " · " + m.exchange : ""}`))));
+    hit({ kind: "market", symbol: m.symbol }, m.name, m.symbol, `${m.type_label}${m.exchange ? " · " + m.exchange : ""} · ${tr("read_filing")}`))));
   if (!parts.length) parts.push(`<p class="empty">${esc(tr("no_results"))}</p>`);
   for (const e of res.errors || []) parts.push(`<p class="note">${esc(e)}</p>`);
   return parts.join("");
@@ -141,9 +145,38 @@ function group(title, src, items) {
   return `<div class="group"><h3>${esc(title)} <span class="src">· ${esc(src)}</span></h3>${items.slice(0, 6).join("")}</div>`;
 }
 function hit(req, name, tk, what) {
-  return `<button class="hit" type="button" data-req='${esc(JSON.stringify(req))}'><b>${esc(name)}</b><span class="tk">${esc(tk || "")}</span><span class="what">${esc(what)}</span></button>`;
+  const q = new URLSearchParams({ kind: req.kind, query: req.query || "", symbol: req.symbol || "" });
+  return `<div class="hit-row"><button class="hit" type="button" data-req='${esc(JSON.stringify(req))}'><b>${esc(name)}</b><span class="tk">${esc(tk || "")}</span><span class="what">${esc(what)}</span></button>` +
+    `<button class="orig" type="button" data-orig="/api/original?${esc(q.toString())}" title="${esc(tr(req.kind === "market" ? "orig_csv_title" : "orig_title"))}">${esc(tr(req.kind === "market" ? "orig_csv" : "orig"))}</button></div>`;
+}
+
+// download the original document (SEC filing, ESEF report, or prices as CSV) without leaving the page
+async function downloadOriginal(btn) {
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = tr("orig_busy");
+  try {
+    const r = await fetch(btn.dataset.orig);
+    if (!r.ok) {
+      let msg = r.statusText;
+      try { msg = (await r.json()).detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    const cd = r.headers.get("content-disposition") || "";
+    const name = (cd.match(/filename="([^"]+)"/) || [])[1] || "document";
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(await r.blob());
+    link.download = name;
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 20000);
+  } catch (err) {
+    alert(tr("orig_failed") + " " + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 document.addEventListener("click", (e) => {
+  const o = e.target.closest(".orig[data-orig]");
+  if (o) return downloadOriginal(o);
   const b = e.target.closest(".hit[data-req]");
   if (b) start(JSON.parse(b.dataset.req));
   const r = e.target.closest(".hit[data-open]");

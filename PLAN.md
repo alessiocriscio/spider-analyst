@@ -15,10 +15,13 @@ financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-bas
 - [x] `analyst/generic.py` — PDF (page image + word layer) and plain HTML
 - [x] `analyst/ai.py` — optional AI pass (Anthropic SDK; OpenAI, Gemini, Mistral, xAI, DeepSeek, OpenRouter via
       OpenAI-compatible endpoints), limited to figures already read, numbers validated
-- [x] `analyst/pdfreport.py` — report PDF drawn with reportlab in the app's style (served at `/api/doc/{id}/report.pdf`)
+- [x] `analyst/pdfreport.py` + `analyst/charts.py` — report PDF drawn with reportlab in the app's style, with charts
+      (results vs prior year, margins, balance sheet, cash bridge, ratios; price, yearly returns, drawdown, monthly
+      heatmap, risk) — served at `/api/doc/{id}/report.pdf`
 - [x] `analyst/i18n.py` — interface language (system) and report language (Italian / English)
 - [x] `analyst/pipeline.py` — one analysis format for the web app, sanitised `view.html`
-- [x] `server.py`, `web/` — spider animation, pacing, live report, finale, report download
+- [x] `server.py`, `web/` — spider animation, pacing, live report, finale, report download; search results offer
+      *Analyse* or *Download original* (`/api/original`: SEC filing, ESEF report, price history CSV)
 - [x] `launch.py` + `Start Spider Analyst.command` / `.bat` — venv, dependencies, server, Chromium browser
 - [x] Offline tests (`tests/`): synthetic documents, simulated APIs, launcher browser choice
 - [ ] Real-data run (MSFT 10-K, Ferrari ESEF, BTC-USD) on the user's machine: the cloud dev session could not
@@ -62,7 +65,7 @@ Every figure cites its page; the occurrence highlighted is the one on the page w
 - Report panel: "N of M figures read", pages read, table of the section being read, other figures with page.
 - Finale: key findings one by one, then the card (4 tiles with YoY change and page, 3 findings, figures and checks).
 - Interface in English, Italian when the OS language is Italian (server-side detection: macOS AppleLanguages,
-  Windows UI language, LANG elsewhere); report in English or Italian; downloadable self-contained HTML report.
+  Windows UI language, LANG elsewhere); report in English or Italian; downloadable PDF report with charts.
 
 ## AI (optional)
 

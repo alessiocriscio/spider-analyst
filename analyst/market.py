@@ -340,7 +340,22 @@ def build(hist: dict, now: date | None = None) -> dict:
         "findings": finds,
         "card": tiles,
         "checks": checks,
+        "series": {
+            "points": _thin(pts, 600), "drawdown": _thin(dd_series, 600), "currency": cur,
+            "annual": [[y, r, p] for y, r, p in annual],
+            "monthly": {k: v for k, v in monthly.items() if k[:4] in set(yrs)},
+            "stats": {"vol": vol, "max_dd": worst, "from_ath": from_ath, "pos_months": pos_months,
+                      "horizon": {k: [lab, tot, ann] for k, (lab, tot, ann) in horizon.items()}, "ytd": ytd},
+        },
     }
+
+
+def _thin(series, n):
+    """At most n points, keeping the first and the last."""
+    if len(series) <= n:
+        return [list(p) for p in series]
+    step = (len(series) - 1) / (n - 1)
+    return [list(series[round(i * step)]) for i in range(n)]
 
 
 def _gaps_ok(pts) -> bool:

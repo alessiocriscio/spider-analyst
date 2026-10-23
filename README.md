@@ -46,6 +46,10 @@ Close the terminal window (or press Ctrl+C) to stop it.
 | Crypto, indices, currencies, commodities, ETFs, funds (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | A generated market sheet: chart, calendar-year and monthly returns, volatility, drawdowns | Yahoo Finance (Coinbase as fallback for crypto) |
 | Any other document, in English or Italian: annual report or statements as PDF/HTML, KID, prospectus, factsheet, whitepaper | The file you upload (*Upload a document*) or the URL you paste | Your file / URL |
 
+Each search result offers two actions: **Analyse** (the spider reads it) or **Download original** — the filing as
+published on SEC EDGAR (`.htm`), the ESEF report from filings.xbrl.org (`.xhtml`), or for market instruments the
+daily price history as CSV.
+
 In inline XBRL filings every figure is an XBRL tag, so its value and exact position are known — no guessing.
 In untagged PDF/HTML the figures are the ones printed on the page. In financial statements (English or Italian)
 the spider recognises the rows from their labels — Revenue / Ricavi, Net income / Utile netto, Diluted EPS, Net
@@ -63,8 +67,14 @@ for XBRL filings. For other documents (KID, prospectus) it lists the main figure
   liquidity, leverage — deterministic calculations on the document's figures.
 - **Language**: Italian or English, chosen on the home page or while reading (the report is regenerated:
   findings, checks, labels, number formats — `$120B` / `$120 mld`).
-- **Download**: *Download report (PDF)* downloads a PDF in the app's style — summary card, findings, checks and
-  every figure read with its page — drawn by the local server in a fraction of a second (no browser involved).
+- **Download**: *Download report (PDF)* downloads a PDF in the app's style, drawn by the local server in a fraction
+  of a second (no browser involved). It contains the summary card and findings, then charts built only from the
+  figures read:
+  - financial statements: current vs prior year for the main lines, margins, balance sheet structure (assets vs
+    liabilities and equity), cash bridge from operating cash flow to free cash flow and shareholder returns, and a
+    key-ratios table with both years;
+  - market sheets: price chart, calendar-year returns, drawdown, monthly-returns heatmap and a return/risk table;
+  - then the arithmetic checks and every figure read with its page.
 
 ## The spider
 
@@ -119,7 +129,7 @@ launch.py                     cross-platform launcher (venv, dependencies, serve
 Start Spider Analyst.command  macOS/Linux double-click wrapper
 Start Spider Analyst.bat      Windows double-click wrapper
 server.py                     FastAPI server (localhost only)
-analyst/                      sources, iXBRL parser, financials, statements, market sheet, PDF/HTML, AI providers, PDF export, i18n
+analyst/                      sources, iXBRL parser, financials, statements, market sheet, PDF/HTML, AI providers, PDF report and charts, i18n
 web/                          interface, spider animation, live report
 tests/                        offline tests on synthetic documents and simulated APIs
 ```

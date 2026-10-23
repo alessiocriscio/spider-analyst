@@ -172,8 +172,19 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
         "headings": [h for h in doc.headings if h["page"] in shown],
         "findings": finds[:6], "card": card, "card_findings": finds[:3], "checks": checks,
         "warnings": doc.warnings + meta.get("warnings", []), "ai": ai_used, "ai_provider": ai.provider_name() if ai_used else "",
+        "fin": _fin_data(m, d, cur, [y_cur, y_prev]),
     }
     return save(a, view)
+
+
+def _fin_data(m: dict, d: dict, cur: str, years: list) -> dict:
+    """Raw numbers behind the report charts (values as read, ratios derived from them)."""
+    return {
+        "currency": cur, "years": years,
+        "metrics": {k: {"label": F.label(k), "cur": mm["cur"]["value"], "prev": mm["prev"]["value"] if mm.get("prev") else None,
+                        "page": mm["cur"]["page"], "kind": F.METRICS[k][2]} for k, mm in m.items()},
+        "derived": {"cur": d["cur"], "prev": d["prev"], "growth": d["growth"]},
+    }
 
 
 def _is_paged_layout(page_html: str) -> bool:
@@ -232,7 +243,7 @@ def from_market(symbol: str, meta: dict, progress: Progress) -> dict:
         "pages": [{"n": p, "title": titles.get(p, t(f"Pagina {p}", f"Page {p}"))} for p in range(1, n + 1)], "total_pages": n,
         "cols": cols, "rows": rows, "facts": facts, "total_facts": len(r["facts"]), "headings": r["headings"],
         "findings": r["findings"][:6], "card": r["card"], "card_findings": r["findings"][:3], "checks": r["checks"],
-        "warnings": [], "ai": False,
+        "warnings": [], "ai": False, "series": r["series"],
     }
     return save(a, view)
 
@@ -334,7 +345,8 @@ def _statement_view(g: dict, facts: dict, ai_finds: list) -> Optional[dict]:
     finds = ai_finds or F.findings(m, d, cur)
     return {"currency": cur, "cols": {p["n"]: [y_cur, y_prev] for p in g["pages"]},
             "rows": {p["n"]: rows.get(p["n"], []) for p in g["pages"]},
-            "findings": finds[:6], "card_findings": finds[:3], "card": F.card(m, d, cur), "checks": F.checks(m)}
+            "findings": finds[:6], "card_findings": finds[:3], "card": F.card(m, d, cur), "checks": F.checks(m),
+            "fin": _fin_data(m, d, cur, [y_cur, y_prev])}
 
 
 def _short(label: str, n: int = 38) -> str:

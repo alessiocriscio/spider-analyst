@@ -18,6 +18,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import (Flowable, KeepTogether, ListFlowable, ListItem, Paragraph, SimpleDocTemplate,
                                 Spacer, Table, TableStyle)
 
+from . import charts
 from .i18n import t, using
 
 INK, MUTED, LINE, PINK, BLUE, CYAN, UP, DOWN = (colors.HexColor(c) for c in
@@ -50,7 +51,7 @@ S = {
     "tl": ParagraphStyle("tl", fontName=SANS, fontSize=7.5, leading=9, textColor=MUTED),
     "tv": ParagraphStyle("tv", fontName=SANS_B, fontSize=15, leading=18, textColor=INK),
     "ty": ParagraphStyle("ty", fontName=SANS_B, fontSize=7.5, leading=9.5),
-    "h2": ParagraphStyle("h2", fontName=SERIF_B, fontSize=14, leading=17, textColor=INK, spaceBefore=12, spaceAfter=2),
+    "h2": ParagraphStyle("h2", fontName=SERIF_B, fontSize=14, leading=17, textColor=INK, spaceBefore=12, spaceAfter=2, keepWithNext=1),
     "h3": ParagraphStyle("h3", fontName=SERIF_B, fontSize=11, leading=14, textColor=INK, spaceBefore=8, spaceAfter=3),
     "body": ParagraphStyle("body", fontName=SERIF, fontSize=10.5, leading=14, textColor=INK, alignment=TA_LEFT),
     "small": ParagraphStyle("small", fontName=SANS, fontSize=9, leading=12, textColor=INK),
@@ -63,12 +64,12 @@ class Rule(Flowable):
     def __init__(self, width, thick=1.4, color=INK):
         super().__init__()
         self.width, self.thick, self.color = width, thick, color
-        self.height = thick + 2
+        self.height = thick + 6
 
     def draw(self):
         self.canv.setStrokeColor(self.color)
         self.canv.setLineWidth(self.thick)
-        self.canv.line(0, 1, self.width, 1)
+        self.canv.line(0, 5, self.width, 5)
 
 
 class Card(Flowable):
@@ -203,7 +204,9 @@ def _build(a: dict, lang: str) -> bytes:
     story += [Card(card, W), Spacer(1, 10)]
 
     def h2(text):
-        story.extend([Paragraph(_x(text), S["h2"]), Rule(W), Spacer(1, 4)])
+        rule = Rule(W)
+        rule.keepWithNext = True                    # a section title never ends a page alone
+        story.extend([Paragraph(_x(text), S["h2"]), rule])
 
     # findings
     finds = a.get("findings", [])
@@ -211,6 +214,33 @@ def _build(a: dict, lang: str) -> bytes:
         h2(t("Osservazioni chiave", "Key findings"))
         story.append(ListFlowable([ListItem(Paragraph(_x(f.get("text")) + _tag(f.get("pages")), S["body"]), leftIndent=14)
                                    for f in finds], bulletType="1", bulletFontName=SERIF, bulletFontSize=10, leftIndent=14))
+
+    # charts, from the figures read and the ratios computed on them
+    h3 = lambda text: Paragraph(_x(text), S["h3"])
+    visuals = charts.financial_section(a, W, h3) + charts.market_section(a, W, h3)
+    if visuals:
+        h2(t("Grafici", "Charts"))
+        story.extend(visuals)
+
+    ratios = charts.ratios_rows(a)
+    if ratios:
+        yrs = [str(y) for y in (a.get("fin") or {}).get("years") or ["", ""]]
+        head = [t("Indicatore", "Ratio"), yrs[0], yrs[1], t("Variazione", "Change")]
+        data = [[Paragraph(f"<font color='#6c6a7c'>{_x(h)}</font>" if i == 0 else f"<para alignment='right'><font color='#6c6a7c'>{_x(h)}</font></para>", S["cell"])
+                 for i, h in enumerate(head)]]
+        for lbl, cur, prev, chg in ratios:
+            col = "#0f8a5f" if chg.startswith("+") else "#c8323c" if chg.startswith("-") else "#1d1c26"
+            data.append([Paragraph(_x(lbl), S["cell"]), Paragraph(f"<para alignment='right'><b>{_x(cur)}</b></para>", S["cell"]),
+                         Paragraph(f"<para alignment='right'>{_x(prev)}</para>", S["cell"]),
+                         Paragraph(f"<para alignment='right'><font color='{col}'>{_x(chg)}</font></para>", S["cell"])])
+        h2(t("Indicatori chiave", "Key ratios"))
+        story.append(_table(data, W, 3))
+    stats = charts.market_stats_rows(a)
+    if stats:
+        data = [[Paragraph(_x(lbl), S["cell"]), Paragraph(f"<para alignment='right'><b>{_x(v)}</b></para>", S["cell"]),
+                 Paragraph(f"<para alignment='right'><font color='#6c6a7c'>{_x(extra)}</font></para>", S["cell"])] for lbl, v, extra in stats]
+        h2(t("Rendimento e rischio", "Return and risk"))
+        story.append(_table(data, W, 2, header=False))
 
     # checks
     checks = a.get("checks", [])
@@ -225,7 +255,8 @@ def _build(a: dict, lang: str) -> bytes:
 
     # every figure read
     facts = a.get("facts", {})
-    h2(f"{t('Cifre lette', 'Figures read')} ({len(facts)})")
+    fig_title = [Paragraph(_x(f"{t('Cifre lette', 'Figures read')} ({len(facts)})"), S["h2"]), Rule(W)]
+    blocks = []
     in_rows = set()
     for page in a.get("pages", []):
         rows_p = a.get("rows", {}).get(str(page["n"])) or a.get("rows", {}).get(page["n"]) or []
@@ -242,14 +273,26 @@ def _build(a: dict, lang: str) -> bytes:
                 val = facts.get(str(fid), {}).get("value_fmt", "") if fid is not None else ""
                 line.append(Paragraph(f"<para alignment='right'>{_x(val)}</para>", S["cell"]))
             data.append(line)
-        story.append(KeepTogether([Paragraph(_x(page.get("title")) + _tag([page["n"]]), S["h3"]), _table(data, W, len(cols))]))
+        blocks.append([Paragraph(_x(page.get("title")) + _tag([page["n"]]), S["h3"]), _table(data, W, len(cols))])
     others = [(fid, f) for fid, f in facts.items() if str(fid) not in in_rows]
     if others:
         data = [[Paragraph(_x(f.get("label")), S["cell"]), Paragraph(f"<para alignment='right'>{_x(f.get('value_fmt'))}</para>", S["cell"]),
                  Paragraph(f"<para alignment='right'><font color='#ff2d8f'><b>p. {f.get('page')}</b></font></para>", S["cell"])]
                 for _, f in others]
-        story.append(Paragraph(t("Altre cifre lette dal ragno", "Other figures the spider read"), S["h3"]))
-        story.append(_table(data, W, 2, header=False))
+        blocks.append([Paragraph(t("Altre cifre lette dal ragno", "Other figures the spider read"), S["h3"]), _table(data, W, 2, header=False)])
+    # the section title travels with the first table, so it never ends a page alone
+    if blocks:
+        first_h3, first_tbl = blocks[0]
+        first_h3.keepWithNext = True
+        story.append(KeepTogether(fig_title + [first_h3, first_tbl]) if len(first_tbl._cellvalues) < 30 else KeepTogether(fig_title + [first_h3]))
+        if len(first_tbl._cellvalues) >= 30:
+            story.append(first_tbl)
+        for b in blocks[1:]:
+            story.append(KeepTogether(b) if len(b[1]._cellvalues) < 30 else b[0])
+            if len(b[1]._cellvalues) >= 30:
+                story.append(b[1])
+    else:
+        story.extend(fig_title)
 
     src = a.get("source") or ""
     story += [Spacer(1, 12), Paragraph(f"{t('Fonte', 'Source')}: {_x(src)}", S["foot"]),

@@ -153,3 +153,8 @@ dialog small { display: block; color: var(--muted); margin-top: 4px; }
 html[lang="it"]:not(.ui-ready) body { visibility: hidden; }
 dialog select { display: block; width: 100%; margin-top: 4px; }
 .byline { margin: 0 0 14px; color: var(--muted); font: italic 16px/1.3 var(--serif); }
+.hit-row { display: flex; gap: 6px; align-items: stretch; margin: 0 0 5px; }
+.hit-row .hit { margin: 0; flex: 1; min-width: 0; }
+.orig { min-width: 172px; background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
+.orig:hover { background: #fff; border-color: var(--ink); }
+.orig:disabled { color: var(--muted); cursor: progress; }
