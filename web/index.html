@@ -36,10 +36,9 @@
 
     <div class="opts">
       <label><input id="opt-ai" type="checkbox"> Osservazioni scritte da Claude</label>
-      <label>Durata della lettura
+      <label>Velocità del ragno
         <select id="opt-dur">
-          <option value="25">25 s</option><option value="40" selected>40 s</option>
-          <option value="60">60 s</option><option value="90">90 s</option><option value="150">2 min 30</option>
+          <option value="normale">Normale</option><option value="veloce" selected>Veloce</option><option value="turbo">Turbo</option>
         </select>
       </label>
       <button id="open-settings" type="button" class="link">Impostazioni</button>
@@ -66,7 +65,7 @@
     <div class="ctrl">
       <button id="play" type="button">Avvia</button>
       <button id="restart" type="button">Ricomincia</button>
-      <select id="dur2" aria-label="Durata"></select>
+      <select id="dur2" aria-label="Velocità"></select>
     </div>
   </header>
   <div id="frame">

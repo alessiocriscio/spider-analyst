@@ -37,6 +37,11 @@ provided by operating activities, Purchases of property, plant and equipment… 
 e precedente e la scala (“in millions”, “in migliaia di euro”), e calcola scheda, controlli e osservazioni come
 per i bilanci XBRL. Per altri documenti (KID, prospetti) elenca le cifre principali, o le sceglie Claude.
 
+## Velocità
+
+Il ragno legge sempre **tutte** le cifre delle pagine che mostra: la velocità (Normale, Veloce, Turbo) cambia solo
+quanto si ferma su ogni cifra e quanto corre tra una e l'altra.
+
 ## Report
 
 - **Scheda (bilanci)**: ricavi, utile netto, EPS diluito, free cash flow (flusso operativo − capex), ognuno con
@@ -65,7 +70,8 @@ inviata se non la inserisci tu.
 - Le cifre di bilancio dipendono dai tag dell'emittente: concetti rari o personalizzati possono mancare
   (la scheda mostra “—”).
 - Il free cash flow usa il capex in immobilizzazioni materiali; alcune società includono anche le immateriali.
-- Yahoo Finance non ha un'API ufficiale: se cambia formato la scheda di mercato smette di funzionare.
+- Yahoo Finance non ha un'API ufficiale e a volte limita le richieste (errore 429): l'app riprova con un cookie di
+  sessione e sull'altro server; se ancora non risponde, scrivi direttamente il simbolo (es. BTC-USD) e riprova più tardi.
 
 ## Test
 

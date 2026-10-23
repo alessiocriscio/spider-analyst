@@ -98,6 +98,10 @@ def search(q: str):
             out[k] = fut.result(timeout=25)
         except Exception as e:
             errors.append(f"{names[k]}: {e}")
+    if not out["market"]:
+        out["market"] = sources.fallback_symbols(q)
+        if out["market"]:
+            errors = [e for e in errors if not e.startswith("Yahoo")]
     out["errors"] = errors
     return out
 

@@ -36,7 +36,7 @@ KEYWORDS = {
 NUM_RE = re.compile(r"^[(\-−–+]?(?:[€$£¥]|EUR|USD)?\s?\d[\d.,'’ ]*%?\)?$")
 INLINE_NUM = re.compile(r"(?<![\w.,])[(\-−–+]?(?:[€$£¥]\s?)?\d{1,3}(?:[.,'’ ]\d{3})+(?:[.,]\d+)?%?\)?|(?<![\w.,])[(\-−–+]?(?:[€$£¥]\s?)?\d+(?:[.,]\d+)?%?\)?")
 MAX_PAGES_SHOWN = 7
-MAX_FACTS_PAGE = 70
+MAX_FACTS_PAGE = 400
 
 
 def parse_loose(t: str) -> Optional[float]:

@@ -57,7 +57,7 @@ function renderResults(res) {
   if (res.market.length) parts.push(group("Mercati", "Scheda generata dallo storico prezzi Yahoo Finance", res.market.map((m) =>
     hit({ kind: "market", symbol: m.symbol }, m.name, m.symbol, `${m.type_it}${m.exchange ? " · " + m.exchange : ""}`))));
   if (!parts.length) parts.push(`<p class="empty">Nessun risultato. Prova con il ticker (es. MSFT, RACE.MI, BTC-USD) o carica direttamente il documento.</p>`);
-  for (const e of res.errors || []) parts.push(`<p class="error">Fonte non raggiungibile: ${esc(e)}</p>`);
+  for (const e of res.errors || []) parts.push(`<p class="note">${esc(e)}</p>`);
   return parts.join("");
 }
 function group(title, src, items) {
@@ -154,7 +154,13 @@ $("#set-save").addEventListener("click", async () => {
 const iframe = $("#doc"), stage = $("#stage"), layer = $("#doc-layer");
 const marksCv = $("#marks"), spiderCv = $("#spider");
 
-for (const sel of [$("#dur2")]) sel.innerHTML = $("#opt-dur").innerHTML;
+// seconds: stop on a figure / key figure / heading, walking factor, hop limits, finale step
+const PACES = {
+  normale: { fig: 0.28, key: 0.7, head: 0.45, walk: 0.034, minHop: 0.12, maxHop: 1.4, cam: 4, obs: 1600 },
+  veloce: { fig: 0.1, key: 0.3, head: 0.2, walk: 0.015, minHop: 0.06, maxHop: 0.6, cam: 7, obs: 1000 },
+  turbo: { fig: 0.04, key: 0.14, head: 0.1, walk: 0.008, minHop: 0.03, maxHop: 0.35, cam: 10, obs: 600 },
+};
+$("#dur2").innerHTML = $("#opt-dur").innerHTML;
 $("#dur2").addEventListener("change", () => { $("#opt-dur").value = $("#dur2").value; state.director?.restart(); });
 $("#back").addEventListener("click", () => { state.director?.stop(); show("home"); loadRecent(); });
 $("#play").addEventListener("click", () => state.director?.toggle());
@@ -266,41 +272,27 @@ class Director {
     return null;
   }
 
-  // choose stops and time them so the whole reading lasts `duration` seconds
-  plan(duration) {
-    const all = this.allStops;
-    const dwell = (s) => s.type === "h" ? 0.55 : s.type === "page" ? 0.6 : s.fact.key ? 0.85 : 0.32;
-    const budget = duration * 0.62;              // time spent reading, the rest walking
-    let stops = all.slice();
-    let need = stops.reduce((t, s) => t + dwell(s), 0);
-    if (need > budget) {
-      // keep headings, key figures and the first stop of each page; thin the rest evenly
-      const keep = stops.filter((s) => s.type !== "f" || s.fact.key || s.first);
-      const rest = stops.filter((s) => !keep.includes(s));
-      const room = Math.max(0, budget - keep.reduce((t, s) => t + dwell(s), 0));
-      const n = Math.min(rest.length, Math.floor(room / 0.32));
-      const step = rest.length / Math.max(n, 1);
-      const picked = new Set(n ? Array.from({ length: n }, (_, i) => rest[Math.floor(i * step)]) : []);
-      stops = all.filter((s) => keep.includes(s) || picked.has(s));
-      need = stops.reduce((t, s) => t + dwell(s), 0);
-    }
-    const k = need > budget ? budget / need : 1;
-    // walking time proportional to sqrt(distance) so short hops are quick and page jumps don't drag
+  // every figure is visited; the pace only changes how long the spider stops and how fast it runs
+  plan(pace) {
+    const P = PACES[pace] || PACES.veloce;
+    const stops = this.allStops;
+    const dwell = (s) => s.type === "h" ? P.head : s.type === "page" ? P.head : s.fact.key ? P.key : P.fig;
     const pts = stops.map((s) => this.anchor(s));
     let prev = { x: pts[0].x - 140, y: pts[0].y - 160 };
-    const hops = pts.map((p) => { const d = Math.hypot(p.x - prev.x, p.y - prev.y); prev = p; return Math.sqrt(d); });
-    const walk = duration - need * k;
-    const sum = hops.reduce((a, b) => a + b, 0) || 1;
     let t = 0;
     this.timeline = stops.map((s, i) => {
-      const travel = Math.min(2.2, Math.max(0.12, walk * hops[i] / sum));
-      const seg = { s, p: pts[i], t0: t, t1: t + travel, t2: t + travel + dwell(s) * k };
+      const d = Math.hypot(pts[i].x - prev.x, pts[i].y - prev.y);
+      prev = pts[i];
+      // walking time grows with sqrt(distance): short hops are quick and page jumps don't drag
+      const travel = Math.min(P.maxHop, Math.max(P.minHop, P.walk * Math.sqrt(d)));
+      const seg = { s, p: pts[i], t0: t, t1: t + travel, t2: t + travel + dwell(s) };
       t = seg.t2;
       return seg;
     });
     this.start0 = { x: pts[0].x - 140, y: pts[0].y - 160 };
     this.planned = new Set(stops.filter((x) => x.type === "f").map((x) => String(x.id)));
     this.total = t;
+    this.pace = P;
   }
 
   anchor(s) {
@@ -341,9 +333,9 @@ class Director {
   restart() {
     this.stop();
     $("#finale").hidden = true; $("#finale").innerHTML = "";
-    this.duration = +$("#opt-dur").value;
+    this.paceName = $("#opt-dur").value;
     this.relayout();
-    this.plan(this.duration);
+    this.plan(this.paceName);
     this.clock = 0; this.idx = -1; this.touched = []; this.marks = []; this.threads = []; this.done = false;
     this.count = 0; this.page = null;
     $("#r-n").textContent = "0";
@@ -408,7 +400,7 @@ class Director {
     const s = this.scale, vw = this.W / s, vh = this.H / s;
     const tx = Math.max(0, Math.min(this.docW - vw, this.spider.x - vw * 0.5));
     const ty = Math.max(0, Math.min(this.docH - vh, this.spider.y - vh * 0.42));
-    const k = still || reduced ? 1 : Math.min(1, dt * 3.2);
+    const k = still || reduced ? 1 : Math.min(1, dt * this.pace.cam);
     this.cam.x += (Math.max(0, tx) - this.cam.x) * k;
     this.cam.y += (ty - this.cam.y) * k;
     if (this.docW * s <= this.W) this.cam.x = -(this.W / s - this.docW) / 2;
@@ -468,7 +460,7 @@ class Director {
     li.innerHTML = `<span>${esc(s.fact.label)}</span><b>${esc(s.fact.value_fmt)}</b><i>p. ${s.page}</i>`;
     const list = $("#r-other-list");
     list.prepend(li);
-    while (list.children.length > 40) list.lastChild.remove();
+    while (list.children.length > 400) list.lastChild.remove();
   }
 
   draw(pos) {
@@ -514,9 +506,10 @@ class Director {
     set(c);
     // abseiling: a long vertical move hangs from a thread
     if (pos.moving && pos.to.y - pos.from.y > 500) thread(c, { x: pos.from.x, y: pos.from.y - 40 }, this.spider.spinneret(), px, 0.9);
-    this.threads = this.threads.filter((th) => now - th.t < (th.key ? 2.2 : 1.1));
+    const life = (th) => th.key ? Math.min(2.2, this.pace.key * 4) : Math.min(1.1, this.pace.fig * 5);
+    this.threads = this.threads.filter((th) => now - th.t < life(th));
     for (const th of this.threads) {
-      const life = th.key ? 2.2 : 1.1;
+      const life = th.key ? Math.min(2.2, this.pace.key * 4) : Math.min(1.1, this.pace.fig * 5);
       thread(c, this.spider.mouth(), th.to, px, Math.min(1, (life - (now - th.t)) / 0.4));
     }
     this.spider.draw(c, px);
@@ -526,7 +519,7 @@ class Director {
     const a = this.a, box = $("#finale");
     box.hidden = false;
     const finds = a.findings || [];
-    const per = reduced ? 300 : Math.max(1100, Math.min(2200, this.duration * 1000 * 0.045));
+    const per = reduced ? 300 : this.pace.obs;
     if (finds.length) {
       box.innerHTML = `<div class="obs"><h2>Osservazioni chiave</h2><ol>${finds.map((f) =>
         `<li>${esc(f.text)} <span class="pg">${fmtPages(f.pages)}</span></li>`).join("")}</ol></div>`;

@@ -120,7 +120,7 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
         order: list[str] = []
         on_page = [f for f in doc.facts if f.page == p and f.value is not None and f.context in doc.contexts]
         on_page.sort(key=lambda f: (f.id not in metric_ids, doc.contexts[f.context].dimensional, f.id))
-        for f in on_page[:90]:
+        for f in on_page:
             role = per.role(f)
             key = metric_ids.get(f.id)
             label = F.METRICS[key][0] if key else (f.row_label or _humanize(f.concept))

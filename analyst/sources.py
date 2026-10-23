@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -249,19 +250,104 @@ def esef_latest(query: str) -> dict:
 
 # ---------------------------------------------------------------- Yahoo Finance
 
-YQ = "https://query1.finance.yahoo.com"
 QUOTE_TYPES = {
     "EQUITY": "Azione", "ETF": "ETF", "MUTUALFUND": "Fondo", "INDEX": "Indice", "CURRENCY": "Valuta",
     "CRYPTOCURRENCY": "Crypto", "FUTURE": "Future", "OPTION": "Opzione", "MONEYMARKET": "Monetario",
 }
 
 
+YQ_HOSTS = ("https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com")
+_crumb: Optional[str] = None
+_crumb_lock = threading.Lock()
+# common names, used when Yahoo's own search is unavailable
+ALIASES = {
+    "bitcoin": "BTC-USD", "btc": "BTC-USD", "ethereum": "ETH-USD", "eth": "ETH-USD", "solana": "SOL-USD", "xrp": "XRP-USD",
+    "oro": "GC=F", "gold": "GC=F", "argento": "SI=F", "silver": "SI=F", "petrolio": "CL=F", "oil": "CL=F", "brent": "BZ=F",
+    "s&p 500": "^GSPC", "s&p500": "^GSPC", "sp500": "^GSPC", "nasdaq": "^IXIC", "nasdaq 100": "^NDX", "dow jones": "^DJI",
+    "ftse mib": "FTSEMIB.MI", "dax": "^GDAXI", "euro stoxx 50": "^STOXX50E", "nikkei": "^N225",
+    "euro dollaro": "EURUSD=X", "eurusd": "EURUSD=X", "eur/usd": "EURUSD=X", "sterlina": "GBPEUR=X", "yen": "JPY=X",
+}
+
+
+def _yahoo_crumb(host: str) -> Optional[str]:
+    """Yahoo answers 401/429 to clients without its consent cookie and crumb: get them once."""
+    global _crumb
+    with _crumb_lock:
+        if _crumb:
+            return _crumb
+        h = {"User-Agent": BROWSER_UA, "Accept": "text/html,application/json;q=0.9,*/*;q=0.8", "Accept-Language": "it-IT,it;q=0.9,en;q=0.8"}
+        try:
+            client().get("https://fc.yahoo.com", headers=h)          # sets the A3 cookie (the page itself is a 404)
+        except httpx.HTTPError:
+            pass
+        try:
+            r = client().get(f"{host}/v1/test/getcrumb", headers=h)
+            if r.status_code == 200 and r.text and "<" not in r.text and len(r.text) < 40:
+                _crumb = r.text.strip()
+        except httpx.HTTPError:
+            pass
+        return _crumb
+
+
+def yahoo_json(path: str, params: dict, ttl: float):
+    """GET a Yahoo Finance JSON endpoint with cache, both hosts, cookie+crumb and a short backoff."""
+    key = "yahoo:" + path + "?" + urlencode(sorted(params.items()))
+    p = _cache_path(key)
+    if p.exists() and time.time() - p.stat().st_mtime < ttl:
+        return json.loads(p.read_bytes())
+    h = {"User-Agent": BROWSER_UA, "Accept": "application/json,text/plain,*/*", "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
+         "Referer": "https://finance.yahoo.com/", "Origin": "https://finance.yahoo.com"}
+    last = None
+    for attempt in range(4):
+        host = YQ_HOSTS[attempt % 2]
+        q = dict(params)
+        if _crumb:
+            q["crumb"] = _crumb
+        try:
+            r = client().get(f"{host}{path}?" + urlencode(q), headers=h)
+        except httpx.HTTPError as e:
+            last = f"rete: {e}"
+            continue
+        if r.status_code == 200:
+            data = r.json()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(r.content)
+            return data
+        if r.status_code == 404:
+            return r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        last = str(r.status_code)
+        if r.status_code in (401, 403, 429) and not _crumb:
+            _yahoo_crumb(host)
+        time.sleep(0.6 * (attempt + 1))
+    if p.exists():                                    # stale cache beats an error
+        return json.loads(p.read_bytes())
+    if last == "429":
+        raise SourceError("Yahoo Finance sta limitando le richieste (429). Riprova tra qualche minuto, "
+                          "oppure scrivi direttamente il simbolo (es. BTC-USD, ^GSPC, EURUSD=X).")
+    raise SourceError(f"Yahoo Finance non risponde ({last}).")
+
+
+def looks_like_symbol(q: str) -> bool:
+    q = q.strip()
+    return bool(re.fullmatch(r"\^?[A-Za-z0-9.]{1,12}([-=][A-Za-z]{1,5})?", q)) and (q.isupper() or any(c in q for c in "^=-."))
+
+
+def fallback_symbols(query: str) -> list[dict]:
+    q = query.strip()
+    out = []
+    sym = ALIASES.get(q.lower())
+    if sym:
+        out.append({"symbol": sym, "name": q.title(), "type": "", "type_it": "Scheda di mercato", "exchange": ""})
+    if looks_like_symbol(q) and q.upper() != sym:
+        out.append({"symbol": q.upper(), "name": q.upper(), "type": "", "type_it": "Scheda di mercato", "exchange": ""})
+    return out
+
+
 def yahoo_search(query: str, limit: int = 10) -> list[dict]:
     q = query.strip()
     if not q:
         return []
-    url = f"{YQ}/v1/finance/search?" + urlencode({"q": q, "quotesCount": limit, "newsCount": 0, "listsCount": 0})
-    data = fetch_json(url, ttl=DAY)
+    data = yahoo_json("/v1/finance/search", {"q": q, "quotesCount": limit, "newsCount": 0, "listsCount": 0}, ttl=DAY)
     out = []
     for r in data.get("quotes", []):
         sym = r.get("symbol")
@@ -279,8 +365,8 @@ def yahoo_search(query: str, limit: int = 10) -> list[dict]:
 
 def yahoo_history(symbol: str, years: int = 10) -> dict:
     rng = "max" if years > 10 else f"{years}y"
-    url = f"{YQ}/v8/finance/chart/{quote(symbol)}?" + urlencode({"range": rng, "interval": "1d", "includeAdjustedClose": "true", "events": "div,splits"})
-    data = fetch_json(url, ttl=6 * 3600)
+    data = yahoo_json(f"/v8/finance/chart/{quote(symbol, safe='')}",
+                      {"range": rng, "interval": "1d", "includeAdjustedClose": "true", "events": "div,splits"}, ttl=6 * 3600)
     res = (data.get("chart") or {}).get("result") or []
     if not res:
         err = (data.get("chart") or {}).get("error") or {}
