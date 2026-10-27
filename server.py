@@ -66,7 +66,7 @@ def index():
 @app.get("/api/status")
 def status():
     cfg = sources.config()
-    return {"ai": ai.available(), "ai_key": bool(ai.api_key()), "ai_providers": ai.status(), "sec_user_agent": sources.sec_user_agent(),
+    return {"ai": ai.available(), "ai_name": ai.provider_name(), "ai_providers": ai.status(), "sec_user_agent": sources.sec_user_agent(),
             "sec_ua_custom": bool(os.environ.get("SPIDER_SEC_UA") or cfg.get("sec_user_agent")),
             "model": ai.MODEL, "ui_lang": system_lang()}
 
@@ -97,6 +97,24 @@ async def settings(request: Request):
             raise HTTPException(400, ui("Nome del modello non valido.", "Invalid model name."))
         ai.save_settings(pid, key or None, None if model is None else str(model), remove=bool(body.get("ai_remove")))
     return status()
+
+
+@app.post("/api/ai/test")
+def ai_test():
+    """One tiny request to the AI in use, so the setup screen can tell whether it works."""
+    try:
+        return {"ok": True, "provider": ai.test()}
+    except ai.AIError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(400, f"{type(e).__name__}: {e}")
+
+
+def _need_ai():
+    # the spider reads every document with the AI: nothing starts until one is set up
+    if not ai.available():
+        raise HTTPException(409, ui("Configura prima l'AI (chiave API o abbonamento) nelle impostazioni.",
+                                    "Set up the AI first (API key or subscription) in Settings."))
 
 
 # ---------------------------------------------------------------- search
@@ -152,8 +170,9 @@ async def analyze(request: Request):
     kind = body.get("kind")
     if kind not in ("sec", "esef", "market", "url"):
         raise HTTPException(400, ui("tipo di richiesta non valido", "invalid request type"))
-    req = {k: body[k] for k in ("kind", "query", "symbol", "url", "form", "ai", "refresh", "lang") if k in body}
-    return {"job": _start(req)}
+    _need_ai()
+    req = {k: body[k] for k in ("kind", "query", "symbol", "url", "form", "refresh", "lang") if k in body}
+    return {"job": _start({**req, "ai": True})}
 
 
 @app.post("/api/relang")
@@ -162,15 +181,17 @@ async def relang(request: Request):
     lang = body.get("lang")
     if lang not in ("it", "en") or not re.fullmatch(r"[0-9a-f]{16}", str(body.get("id", ""))):
         raise HTTPException(400, ui("richiesta non valida", "invalid request"))
+    _need_ai()
     return {"job": _start({"kind": "relang", "id": body["id"], "lang": lang})}
 
 
 @app.post("/api/upload")
-async def upload(file: UploadFile = File(...), use_ai: bool = Form(False), lang: str = Form("it")):
+async def upload(file: UploadFile = File(...), lang: str = Form("it")):
+    _need_ai()
     data = await file.read(MAX_UPLOAD + 1)
     if len(data) > MAX_UPLOAD:
         raise HTTPException(413, ui("File troppo grande (max 80 MB)", "File too large (max 80 MB)"))
-    return {"job": _start({"kind": "upload", "data": data, "name": file.filename or "documento", "ai": use_ai, "lang": lang})}
+    return {"job": _start({"kind": "upload", "data": data, "name": file.filename or "documento", "ai": True, "lang": lang})}
 
 
 @app.get("/api/job/{jid}")

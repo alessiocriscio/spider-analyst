@@ -28,7 +28,8 @@ CACHE = Path(os.environ.get("SPIDER_DATA_DIR", ROOT / ".data"))
 CONFIG_FILE = Path.home() / ".spider-analyst" / "config.json"
 DEFAULT_SEC_UA = "SpiderAnalyst/1.0 (local research tool; spider-analyst@example.com)"
 BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-SEC_FORMS = ("10-K", "10-K/A", "20-F", "40-F", "10-Q")
+SEC_FORMS = ("10-K", "10-K/A", "20-F", "40-F", "10-Q", "S-1", "S-1/A", "F-1", "F-1/A", "424B4", "424B1")
+REG_FORMS = ("424B4", "424B1", "S-1/A", "S-1", "F-1/A", "F-1")        # IPO prospectuses and registration statements
 DAY = 86400
 
 
@@ -152,7 +153,32 @@ def sec_search(query: str, limit: int = 8) -> list[dict]:
             continue
         scored.append((s, len(n), c))
     scored.sort(key=lambda x: (x[0], x[1]))
-    return [c for _, _, c in scored[:limit]]
+    out = [c for _, _, c in scored[:limit]]
+    if len(q) >= 3 and len(out) < limit:
+        # companies without a ticker (e.g. before an IPO) only show up in EDGAR full-text search
+        try:
+            known = {c["cik"] for c in out}
+            out += [c for c in sec_registrants(query) if c["cik"] not in known][:limit - len(out)]
+        except (SourceError, ValueError, KeyError, TypeError):
+            pass
+    return out
+
+
+def sec_registrants(name: str, limit: int = 5) -> list[dict]:
+    """Filers whose name contains `name` and who filed a prospectus or annual report (EDGAR full-text search)."""
+    url = "https://efts.sec.gov/LATEST/search-index?" + urlencode({"q": f'"{name.strip()}"', "forms": ",".join(REG_FORMS + ("10-K", "20-F"))})
+    data = fetch_json(url, ttl=DAY)
+    out, seen = [], set()
+    for h in (data.get("hits") or {}).get("hits") or []:
+        src = h.get("_source") or {}
+        for cik, dn in zip(src.get("ciks") or [], src.get("display_names") or []):
+            nm = re.sub(r"\s*\(CIK \d+\)\s*$", "", dn)
+            nm = re.sub(r"\s*\([A-Z0-9.,\- ]{1,20}\)\s*$", "", nm).strip()          # tickers in brackets
+            if not cik.isdigit() or int(cik) in seen or name.strip().lower() not in nm.lower():
+                continue
+            seen.add(int(cik))
+            out.append({"cik": int(cik), "ticker": "", "name": nm, "form": src.get("form", ""), "filed": src.get("file_date", "")})
+    return out[:limit]
 
 
 def sec_filings(cik: int, forms=SEC_FORMS) -> list[dict]:
@@ -183,15 +209,16 @@ def sec_latest(query: str, form: Optional[str] = None) -> dict:
     c = sec_lookup(query)
     if not c:
         raise SourceError(ui(f"Nessuna società SEC trovata per «{query}».", f"No SEC company found for \"{query}\"."))
-    filings = [f for f in sec_filings(c["cik"]) if f["ixbrl"]]
+    every = sec_filings(c["cik"])
     if form:
-        filings = [f for f in filings if f["form"] == form]
+        filings = [f for f in every if f["form"] == form]
     else:
-        annual = [f for f in filings if f["form"] in ("10-K", "20-F", "40-F")]
-        filings = annual or filings
+        # the annual report; before an IPO, the latest prospectus or registration statement
+        filings = ([f for f in every if f["ixbrl"] and f["form"] in ("10-K", "20-F", "40-F")]
+                   or [f for f in every if f["form"] in REG_FORMS] or [f for f in every if f["ixbrl"]])
     if not filings:
-        raise SourceError(ui(f"Nessun bilancio iXBRL disponibile su EDGAR per {c.get('name') or query}.",
-                              f"No inline XBRL filing available on EDGAR for {c.get('name') or query}."))
+        raise SourceError(ui(f"Nessun bilancio annuale o prospetto disponibile su EDGAR per {c.get('name') or query}.",
+                              f"No annual report or prospectus available on EDGAR for {c.get('name') or query}."))
     return filings[0]
 
 

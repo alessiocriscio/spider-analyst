@@ -39,7 +39,7 @@
     </div>
 
     <div class="opts">
-      <label><input id="opt-ai" type="checkbox"> <span data-i18n="opt_ai">Findings written by Claude</span></label>
+      <span id="ai-state"></span>
       <label><span data-i18n="opt_lang">Report language</span>
         <select id="opt-lang"><option value="en">English</option><option value="it">Italiano</option></select>
       </label>
@@ -79,6 +79,7 @@
       <div id="finale" hidden></div>
     </div>
     <aside id="report">
+      <div id="r-reading" hidden></div>
       <div class="r-head">
         <h2 id="r-title"></h2>
         <p id="r-sub"></p>
@@ -97,28 +98,39 @@
   </div>
 </section>
 
-<!-- Settings -->
+<!-- Settings (also the first-run setup: the AI is required) -->
 <dialog id="settings">
   <form method="dialog" id="settings-form">
-    <h2 data-i18n="settings">Settings</h2>
+    <h2 id="set-title" data-i18n="settings">Settings</h2>
+    <p id="set-intro" class="intro" data-i18n="setup_intro" hidden>The spider reads every document with an AI, so it understands it instead of only collecting figures. Choose how to connect one.</p>
+    <fieldset class="modes">
+      <legend data-i18n="ai_label">AI that reads the documents</legend>
+      <label><input type="radio" name="aimode" value="sub"> <span data-i18n="mode_sub">A subscription I already have</span></label>
+      <label><input type="radio" name="aimode" value="key"> <span data-i18n="mode_key">An API key</span></label>
+    </fieldset>
+    <div id="mode-sub">
+      <label><span data-i18n="sub_label">Subscription</span><select id="set-sub"></select></label>
+      <small id="sub-state"></small>
+    </div>
+    <div id="mode-key">
+      <label><span data-i18n="provider_label">Provider</span><select id="set-provider"></select></label>
+      <label><span data-i18n="key_label">API key</span>
+        <input id="set-key" type="password" autocomplete="off">
+        <small id="key-state"></small>
+      </label>
+    </div>
+    <label><span data-i18n="model_label">Model</span>
+      <input id="set-model" type="text" autocomplete="off" spellcheck="false">
+    </label>
     <label><span data-i18n="ua_label">Identity for SEC EDGAR (User-Agent)</span>
       <input id="set-ua" type="text" data-i18n-ph="ua_ph" placeholder="Jane Doe jane@example.com">
       <small data-i18n="ua_help">The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.</small>
     </label>
-    <label><span data-i18n="provider_label">AI provider (optional)</span>
-      <select id="set-provider"></select>
-    </label>
-    <label><span data-i18n="key_label">API key (optional)</span>
-      <input id="set-key" type="password" autocomplete="off">
-      <small id="key-state"></small>
-    </label>
-    <label><span data-i18n="model_label">Model</span>
-      <input id="set-model" type="text" autocomplete="off" spellcheck="false">
-    </label>
     <p id="set-msg" class="error" hidden></p>
+    <p id="set-ok" class="ok" hidden></p>
     <div class="row end">
-      <button value="cancel" type="submit" class="link" data-i18n="close">Close</button>
-      <button id="set-save" type="button" data-i18n="save">Save</button>
+      <button id="set-close" value="cancel" type="submit" class="link" data-i18n="close">Close</button>
+      <button id="set-save" type="button" data-i18n="save_test">Save and test</button>
     </div>
   </form>
 </dialog>

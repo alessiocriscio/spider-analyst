@@ -118,3 +118,32 @@ def test_non_crypto_reports_yahoo_error(net):
     import pytest as _p
     with _p.raises(sources.SourceError, match="429"):
         sources.price_history("^GSPC")
+
+
+def test_pre_ipo_company_and_prospectus(tmp_path, monkeypatch):
+    """A company without a ticker is found through EDGAR full-text search; its latest S-1/A is the document read."""
+    efts = {"hits": {"hits": [
+        {"_source": {"ciks": ["0002000001"], "display_names": ["Lumen Labs, Inc.  (CIK 0002000001)"], "form": "S-1/A", "file_date": "2026-09-30"}},
+        {"_source": {"ciks": ["0000789019"], "display_names": ["MICROSOFT CORP  (MSFT)  (CIK 0000789019)"], "form": "10-K", "file_date": "2026-07-30"}}]}}
+    subs = {"cik": "0002000001", "name": "Lumen Labs, Inc.", "tickers": [], "filings": {"recent": {
+        "accessionNumber": ["0002000001-26-000009", "0002000001-26-000003"], "filingDate": ["2026-09-30", "2026-08-01"],
+        "reportDate": ["", ""], "form": ["S-1/A", "S-1"], "primaryDocument": ["lumen-s1a.htm", "lumen-s1.htm"], "isInlineXBRL": [0, 0]}}}
+
+    def handler(req: httpx.Request):
+        u = str(req.url)
+        if u == "https://www.sec.gov/files/company_tickers.json":
+            return httpx.Response(200, json=TICKERS)
+        if u.startswith("https://efts.sec.gov/LATEST/search-index?"):
+            assert "S-1" in req.url.params["forms"] and req.url.params["q"] == '"lumen"'
+            return httpx.Response(200, json=efts)
+        if u.startswith("https://data.sec.gov/submissions/CIK0002000001.json"):
+            return httpx.Response(200, json=subs)
+        return httpx.Response(404)
+
+    monkeypatch.setattr(sources, "CACHE", tmp_path)
+    monkeypatch.setattr(sources, "_client", httpx.Client(transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr(sources.time, "sleep", lambda s: None)
+    hits = sources.sec_search("lumen")
+    assert hits == [{"cik": 2000001, "ticker": "", "name": "Lumen Labs, Inc.", "form": "S-1/A", "filed": "2026-09-30"}]
+    f = sources.sec_latest("2000001")
+    assert f["form"] == "S-1/A" and f["url"].endswith("/000200000126000009/lumen-s1a.htm")

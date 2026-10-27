@@ -2,8 +2,9 @@
 
 There are no XBRL tags here, so figures are found heuristically: every number on
 the page is a candidate, labelled with the words before it on the same line (or
-the table row it sits in) and ranked by financial keywords. Claude, when enabled,
-can then pick and explain them (see ai.py), always checked against the page text.
+the table row it sits in) and ranked by financial keywords. The AI reader can pick
+the pages to show from the full text (choose=...) and then names the figures that
+matter (see reader.py), always checked against the page text.
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import html
 import re
 from pathlib import Path
 from statistics import median
-from typing import Optional
+from typing import Callable, Optional
 
 from lxml import etree, html as lxml_html
 
@@ -37,6 +38,8 @@ NUM_RE = re.compile(r"^[(\-−–+]?(?:[€$£¥]|EUR|USD)?\s?\d[\d.,'’ ]*%?\)
 INLINE_NUM = re.compile(r"(?<![\w.,])[(\-−–+]?(?:[€$£¥]\s?)?\d{1,3}(?:[.,'’ ]\d{3})+(?:[.,]\d+)?%?\)?|(?<![\w.,])[(\-−–+]?(?:[€$£¥]\s?)?\d+(?:[.,]\d+)?%?\)?")
 MAX_PAGES_SHOWN = 7
 MAX_FACTS_PAGE = 400
+# choose(all page texts) -> 0-based indexes of the pages to show, or None for the built-in choice
+Chooser = Optional[Callable[[list[str]], Optional[list[int]]]]
 
 
 def parse_loose(t: str) -> Optional[float]:
@@ -91,7 +94,7 @@ def score_label(label: str) -> int:
 
 # ---------------------------------------------------------------- PDF
 
-def pdf_document(data: bytes, img_dir: Path, img_url: str) -> dict:
+def pdf_document(data: bytes, img_dir: Path, img_url: str, choose: Chooser = None) -> dict:
     """PDF -> page images + transparent word layer (so the spider can stand on words)."""
     import pypdfium2 as pdfium
 
@@ -108,8 +111,8 @@ def pdf_document(data: bytes, img_dir: Path, img_url: str) -> dict:
         texts.append(tp.get_text_range() or "")
         tp.close()
         page.close()
-    cand = sorted(((_score_text(txt), i) for i, txt in enumerate(texts)), reverse=True)
-    chosen = sorted({0} | {i for sc, i in cand[:MAX_PAGES_SHOWN - 1] if sc > 0})
+    picked = choose(texts) if choose else None
+    chosen = sorted(set(picked)) if picked else best_pages(texts)
     pages_words = {}
     for i in chosen:
         page = pdf[i]
@@ -159,6 +162,13 @@ def pdf_document(data: bytes, img_dir: Path, img_url: str) -> dict:
     pdf.close()
     return {"pages": out_pages, "facts": facts, "headings": headings, "page_text": page_text,
             "total_pages": n, "title": title, "css": PDF_CSS}
+
+
+def best_pages(texts: list[str], n: int = MAX_PAGES_SHOWN) -> list[int]:
+    """The first page and the pages that look like they hold the figures that matter (0-based)."""
+    cand = sorted(((_score_text(txt), i) for i, txt in enumerate(texts)), reverse=True)
+    first = next((i for i, t in enumerate(texts) if t.strip()), 0)
+    return sorted({first} | {i for sc, i in cand[:n - 1] if sc > 0})
 
 
 def _score_text(text: str) -> float:
@@ -282,15 +292,19 @@ PDF_CSS = """
 
 # ---------------------------------------------------------------- HTML (no XBRL tags)
 
-def html_document(data: bytes, base_url: Optional[str]) -> dict:
+def html_document(data: bytes, base_url: Optional[str], choose: Chooser = None) -> dict:
     doc = ixbrl.parse(data, base_url)          # sanitises and splits pages; no facts in plain HTML
     facts, pages_out = [], []
     scored = []
+    picked = choose(doc.page_text) if choose else None
     for pi, page in enumerate(doc.pages, start=1):
+        if picked and pi - 1 not in picked:
+            continue
         frag = lxml_html.fragment_fromstring(page or "<div></div>", create_parent="div")
         figs = _wrap_numbers(frag)
         scored.append((sum(f["score"] for f in figs) + 0.1 * len(figs), pi, frag, figs))
-    chosen = {1} | {pi for s, pi, _, _ in sorted(scored, key=lambda x: -x[0])[:MAX_PAGES_SHOWN - 1] if s > 0}
+    chosen = {pi + 1 for pi in picked} if picked else \
+        {1} | {pi for s, pi, _, _ in sorted(scored, key=lambda x: -x[0])[:MAX_PAGES_SHOWN - 1] if s > 0}
     for s, pi, frag, figs in scored:
         if pi not in chosen:
             continue

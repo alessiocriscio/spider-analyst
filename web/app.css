@@ -158,3 +158,25 @@ dialog select { display: block; width: 100%; margin-top: 4px; }
 .orig { min-width: 172px; background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
 .orig:hover { background: #fff; border-color: var(--ink); }
 .orig:disabled { color: var(--muted); cursor: progress; }
+#ai-state { font-size: 13px; color: var(--muted); cursor: pointer; }
+#ai-state.off { color: var(--down); font-weight: 600; }
+dialog .intro { margin: -4px 0 14px; color: #3c3a4a; font-size: 14px; line-height: 1.45; }
+dialog .modes { border: 0; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+dialog .modes legend { font-size: 14px; font-weight: 600; margin-bottom: 6px; padding: 0; }
+dialog .modes label { display: flex; gap: 6px; align-items: center; margin: 0; }
+#mode-sub small { display: block; margin: -8px 0 14px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+#mode-sub code { background: #f1f0f6; border-radius: 4px; padding: 1px 5px; }
+dialog .ok { color: #0a7a45; font-size: 14px; }
+dialog { max-height: 92vh; overflow-y: auto; }
+#r-reading { border: 1.5px solid var(--ink); border-radius: 8px; padding: 12px 14px 4px; margin: 0 6px 34px 0; background: #fff;
+  box-shadow: 4px 4px 0 #ff2d8f; font-size: 13.5px; line-height: 1.45; }
+#r-reading h3 span { color: var(--muted); font-weight: 400; }
+#r-reading .sum { font: 15px/1.45 var(--serif); margin: 0 0 8px; }
+#r-reading h4 { font: 600 13px var(--sans); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .03em; color: #3c3a4a; }
+#r-reading ul { margin: 0 0 6px; padding-left: 1.1em; }
+#r-reading li { margin-bottom: 4px; }
+#r-reading .pg { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.obs.sum p { font: 21px/1.45 var(--serif); margin: 0; }
+.obs.sum { opacity: 0; transform: translateY(6px); transition: opacity .5s, transform .5s; }
+.obs.sum.in { opacity: 1; transform: none; }
+dialog .modes input { width: auto; margin: 0; }

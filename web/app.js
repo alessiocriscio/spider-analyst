@@ -11,15 +11,23 @@ const UI = {
     search_label: "Search for an instrument", search_ph: "Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, gold…", search_btn: "Search",
     url_label: "Or paste the address of a document (PDF, HTML, iXBRL)", read_btn: "Read", drop_aria: "Upload a file",
     drop: "<b>Upload a document</b><br>Drop a PDF or HTML file here (statements, report, KID, in English or Italian) or <u>choose a file</u>",
-    opt_ai: "Findings written by AI", opt_lang: "Report language", settings: "Settings", back_search: "Back to search",
+    opt_lang: "Report language", settings: "Settings", back_search: "Back to search",
     new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download report (PDF)",
     ua_label: "Identity for SEC EDGAR (User-Agent)", ua_ph: "Jane Doe jane@example.com",
     ua_help: "The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.",
-    key_label: "API key (optional)", provider_label: "AI provider (optional)", model_label: "Model", close: "Close", save: "Save",
+    key_label: "API key", provider_label: "Provider", model_label: "Model (optional)", close: "Close", save_test: "Save and test",
+    setup_title: "Set up the AI", setup_intro: "The spider reads every document with an AI, so it understands it instead of only collecting figures. Choose how to connect one: it is needed once.",
+    ai_label: "AI that reads the documents", mode_sub: "A subscription I already have", mode_key: "An API key", sub_label: "Subscription",
+    sub_found: "Found on this computer. If you have not signed in yet, open a terminal, run the command below once and sign in.",
+    sub_missing: "Not found on this computer. Install it, sign in once, then press Save and test.",
+    sub_claude: "Claude Pro or Max: install Claude Code (claude.com/product/claude-code), run “claude” in a terminal and sign in with your Claude account. Usage counts toward your plan's limits.",
+    sub_codex: "ChatGPT Plus or Pro: install Codex (npm install -g @openai/codex), run “codex” in a terminal and choose “Sign in with ChatGPT”. Usage counts toward your plan's limits.",
+    model_default: "the tool's default", testing: "Testing the connection…", connected: (n) => `Connected: ${n}`,
+    ai_on: (n) => `AI: ${n}`, ai_off: "AI not set up", need_ai: "Set up the AI first.",
+    sec_noticker: (f) => `${f || "Filing"} · no ticker yet`,
     error: (m) => `Something went wrong: ${m} — reload the page (Cmd+R / Ctrl+R). If it happens again, send this message.`,
-    need_key: "Add an API key (Anthropic, OpenAI, Gemini, OpenRouter…) in Settings",
     searching: (q) => `Searching for “${q}” on SEC EDGAR, filings.xbrl.org and Yahoo Finance…`,
-    g_sec: "US annual report", g_sec_src: "SEC EDGAR: latest 10-K, 20-F or 40-F", read_filing: "Analyse",
+    g_sec: "US filings", g_sec_src: "SEC EDGAR: latest 10-K, 20-F or 40-F, or the IPO prospectus (S-1, F-1)", read_filing: "Analyse",
     g_esef: "European annual report", g_esef_src: "ESEF from filings.xbrl.org", read_report: "Analyse",
     g_market: "Markets", g_market_src: "Sheet generated from the Yahoo Finance price history",
     orig: "Download original", orig_csv: "Download prices (CSV)", orig_busy: "Downloading…", orig_failed: "Download failed:",
@@ -27,7 +35,7 @@ const UI = {
     no_results: "No results. Try the ticker (e.g. MSFT, RACE.MI, BTC-USD) or upload the document directly.",
     uploading: (n) => `Uploading ${n}`, preparing: "Preparing the document", not_started: "The reading did not start",
     recent: "Recently read", key_saved: "Key saved for this provider. Leave empty to keep it; type “remove” to delete it.",
-    key_info: "Only needed for findings written by AI. Everything else works without a key.", remove_word: "remove",
+    key_info: "Billed by the provider to your account. Stored only on this computer.", remove_word: "remove",
     relang: (l) => l === "en" ? "Preparing the English report" : "Preparing the Italian report",
   },
   it: {
@@ -36,15 +44,23 @@ const UI = {
     search_label: "Cerca uno strumento", search_ph: "Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, oro…", search_btn: "Cerca",
     url_label: "Oppure incolla l'indirizzo di un documento (PDF, HTML, iXBRL)", read_btn: "Leggi", drop_aria: "Carica un file",
     drop: "<b>Carica un documento</b><br>Trascina qui un PDF o HTML (bilancio, report, KID, in italiano o in inglese) o <u>scegli un file</u>",
-    opt_ai: "Osservazioni scritte dall'AI", opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca",
+    opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca",
     new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica report (PDF)",
     ua_label: "Identificazione per SEC EDGAR (User-Agent)", ua_ph: "Nome Cognome nome@esempio.it",
     ua_help: "La SEC chiede a chi scarica i bilanci di indicare un nome e un contatto. Resta su questo computer.",
-    key_label: "Chiave API (facoltativa)", provider_label: "Fornitore AI (facoltativo)", model_label: "Modello", close: "Chiudi", save: "Salva",
+    key_label: "Chiave API", provider_label: "Fornitore", model_label: "Modello (facoltativo)", close: "Chiudi", save_test: "Salva e prova",
+    setup_title: "Configura l'AI", setup_intro: "Il ragno legge ogni documento con un'AI, così lo capisce invece di raccogliere solo cifre. Scegli come collegarne una: serve una volta sola.",
+    ai_label: "AI che legge i documenti", mode_sub: "Un abbonamento che ho già", mode_key: "Una chiave API", sub_label: "Abbonamento",
+    sub_found: "Trovato su questo computer. Se non hai ancora fatto l'accesso, apri un terminale, esegui una volta il comando qui sotto ed entra con il tuo account.",
+    sub_missing: "Non trovato su questo computer. Installalo, fai l'accesso una volta, poi premi Salva e prova.",
+    sub_claude: "Claude Pro o Max: installa Claude Code (claude.com/product/claude-code), esegui «claude» in un terminale ed entra con il tuo account Claude. L'uso conta nei limiti del tuo piano.",
+    sub_codex: "ChatGPT Plus o Pro: installa Codex (npm install -g @openai/codex), esegui «codex» in un terminale e scegli «Sign in with ChatGPT». L'uso conta nei limiti del tuo piano.",
+    model_default: "quello predefinito dello strumento", testing: "Provo la connessione…", connected: (n) => `Collegato: ${n}`,
+    ai_on: (n) => `AI: ${n}`, ai_off: "AI non configurata", need_ai: "Configura prima l'AI.",
+    sec_noticker: (f) => `${f || "Documento"} · ancora senza ticker`,
     error: (m) => `Qualcosa non ha funzionato: ${m} — ricarica la pagina (Cmd+R / Ctrl+R). Se si ripete, manda questo messaggio.`,
-    need_key: "Aggiungi una chiave API (Anthropic, OpenAI, Gemini, OpenRouter…) nelle impostazioni",
     searching: (q) => `Cerco «${q}» su SEC EDGAR, filings.xbrl.org e Yahoo Finance…`,
-    g_sec: "Bilancio annuale USA", g_sec_src: "SEC EDGAR: 10-K, 20-F o 40-F più recente", read_filing: "Analizza",
+    g_sec: "Documenti SEC (USA)", g_sec_src: "SEC EDGAR: 10-K, 20-F o 40-F più recente, o il prospetto di IPO (S-1, F-1)", read_filing: "Analizza",
     g_esef: "Relazione annuale europea", g_esef_src: "ESEF da filings.xbrl.org", read_report: "Analizza",
     g_market: "Mercati", g_market_src: "Scheda generata dallo storico prezzi Yahoo Finance",
     orig: "Scarica originale", orig_csv: "Scarica prezzi (CSV)", orig_busy: "Scarico…", orig_failed: "Download non riuscito:",
@@ -52,7 +68,7 @@ const UI = {
     no_results: "Nessun risultato. Prova con il ticker (es. MSFT, RACE.MI, BTC-USD) o carica direttamente il documento.",
     uploading: (n) => `Carico ${n}`, preparing: "Preparo il documento", not_started: "La lettura non è partita",
     recent: "Letti di recente", key_saved: "Chiave salvata per questo fornitore. Lascia vuoto per non cambiarla; scrivi «rimuovi» per cancellarla.",
-    key_info: "Serve solo per le osservazioni scritte dall'AI. Senza chiave tutto il resto funziona.", remove_word: "rimuovi",
+    key_info: "Il fornitore addebita l'uso sul tuo account. Resta solo su questo computer.", remove_word: "rimuovi",
     relang: (l) => l === "en" ? "Preparo il report in inglese" : "Preparo il report in italiano",
   },
 };
@@ -107,10 +123,9 @@ const state = { status: null, analysis: null, director: null };
 
 async function refreshStatus() {
   try { state.status = await api("/api/status"); } catch { state.status = null; }
-  const ai = $("#opt-ai");
-  ai.disabled = !state.status?.ai;
-  ai.parentElement.title = state.status?.ai ? "" : tr("need_key");
-  if (!state.status?.ai) ai.checked = false;
+  const st = $("#ai-state");
+  st.textContent = state.status?.ai ? tr("ai_on", state.status.ai_name) : tr("ai_off");
+  st.classList.toggle("off", !state.status?.ai);
 }
 
 let searchSeq = 0;
@@ -132,7 +147,8 @@ $("#search-form").addEventListener("submit", async (e) => {
 function renderResults(res) {
   const parts = [];
   if (res.sec.length) parts.push(group(tr("g_sec"), tr("g_sec_src"), res.sec.map((c) =>
-    hit({ kind: "sec", query: c.ticker || String(c.cik) }, c.name, c.ticker, tr("read_filing")))));
+    hit({ kind: "sec", query: c.ticker || String(c.cik) }, c.name, c.ticker || `CIK ${c.cik}`,
+      c.ticker ? tr("read_filing") : `${tr("sec_noticker", c.form)} · ${tr("read_filing")}`))));
   if (res.esef.length) parts.push(group(tr("g_esef"), tr("g_esef_src"), res.esef.map((e) =>
     hit({ kind: "esef", query: e.lei }, e.name, e.country, tr("read_report")))));
   if (res.market.length) parts.push(group(tr("g_market"), tr("g_market_src"), res.market.map((m) =>
@@ -200,14 +216,14 @@ file.addEventListener("change", () => { if (file.files[0]) upload(file.files[0])
 async function upload(f) {
   const fd = new FormData();
   fd.append("file", f);
-  fd.append("use_ai", $("#opt-ai").checked ? "true" : "false");
   fd.append("lang", $("#opt-lang").value);
+  if (!state.status?.ai) return openSettings(true);
   show("loading"); loadingReset(tr("uploading", f.name));
   try { const { job } = await api("/api/upload", { method: "POST", body: fd }); await follow(job); } catch (err) { loadingError(err.message); }
 }
 
 async function start(req) {
-  req.ai = $("#opt-ai").checked;
+  if (!state.status?.ai) return openSettings(true);
   req.lang = $("#opt-lang").value;
   show("loading"); loadingReset(tr("preparing"));
   try { const { job } = await postJSON("/api/analyze", req); await follow(job); } catch (err) { loadingError(err.message); }
@@ -242,37 +258,79 @@ async function loadRecent() {
   } catch { /* server not ready */ }
 }
 
-// settings
+// settings; the first time (no AI yet) the same dialog is the required setup
+const SUB_HELP = { claude_code: "sub_claude", codex: "sub_codex" };
+const SUB_CMD = { claude_code: "claude", codex: "codex" };
 function providerInfo(id) {
   return (state.status?.ai_providers?.providers || []).find((p) => p.id === id);
+}
+function showMode(mode) {
+  for (const r of document.querySelectorAll("input[name=aimode]")) r.checked = r.value === mode;
+  $("#mode-sub").hidden = mode !== "sub"; $("#mode-key").hidden = mode !== "key";
+  showProvider(mode === "sub" ? $("#set-sub").value : $("#set-provider").value);
 }
 function showProvider(id) {
   const p = providerInfo(id);
   if (!p) return;
+  $("#set-model").value = p.model || "";
+  $("#set-model").placeholder = p.default_model || tr("model_default");
+  if (p.cli) {
+    $("#sub-state").innerHTML = `${esc(tr(SUB_HELP[id]))}<br><b>${esc(tr(p.installed ? "sub_found" : "sub_missing"))}</b> <code>${esc(SUB_CMD[id])}</code>`;
+    return;
+  }
   $("#set-key").value = "";
   $("#set-key").placeholder = p.has_key ? "••••••••" : { anthropic: "sk-ant-…", openai: "sk-…", openrouter: "sk-or-…", gemini: "AIza…" }[id] || "";
   $("#key-state").textContent = p.has_key ? tr("key_saved") : tr("key_info");
-  $("#set-model").value = p.model || "";
-  $("#set-model").placeholder = p.default_model;
 }
-$("#open-settings").addEventListener("click", async () => {
+async function openSettings(setup = false) {
   await refreshStatus();
+  setup = setup || !state.status?.ai;
+  const dlg = $("#settings");
+  dlg.dataset.setup = setup ? "1" : "";
+  $("#set-title").textContent = tr(setup ? "setup_title" : "settings");
+  $("#set-intro").hidden = !setup; $("#set-close").hidden = setup;
   $("#set-ua").value = state.status?.sec_ua_custom ? state.status.sec_user_agent : "";
   const prov = state.status?.ai_providers?.providers || [];
-  $("#set-provider").innerHTML = prov.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.has_key ? " ✓" : ""}</option>`).join("");
-  $("#set-provider").value = state.status?.ai_providers?.active || "anthropic";
-  showProvider($("#set-provider").value);
-  $("#set-msg").hidden = true;
-  $("#settings").showModal();
-});
+  const opt = (p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.has_key || p.installed ? " ✓" : ""}</option>`;
+  $("#set-sub").innerHTML = prov.filter((p) => p.cli).map(opt).join("");
+  $("#set-provider").innerHTML = prov.filter((p) => !p.cli).map(opt).join("");
+  const act = state.status?.ai_providers?.active;
+  if (act && providerInfo(act)?.cli) $("#set-sub").value = act;
+  else if (act) $("#set-provider").value = act;
+  $("#set-msg").hidden = true; $("#set-ok").hidden = true;
+  showMode(act && !providerInfo(act)?.cli ? "key" : "sub");
+  if (!dlg.open) dlg.showModal();
+}
+$("#open-settings").addEventListener("click", () => openSettings(false));
+$("#ai-state").addEventListener("click", () => openSettings(false));
+for (const r of document.querySelectorAll("input[name=aimode]")) r.addEventListener("change", () => showMode(r.value));
+$("#set-sub").addEventListener("change", () => showProvider($("#set-sub").value));
 $("#set-provider").addEventListener("change", () => showProvider($("#set-provider").value));
+// the setup cannot be dismissed until an AI works
+$("#settings").addEventListener("cancel", (e) => { if ($("#settings").dataset.setup) e.preventDefault(); });
 $("#set-save").addEventListener("click", async () => {
-  const k = $("#set-key").value.trim();
-  const body = { sec_user_agent: $("#set-ua").value.trim(), ai_provider: $("#set-provider").value, ai_model: $("#set-model").value.trim() };
-  if (k.toLowerCase() === tr("remove_word") || k.toLowerCase() === "remove") body.ai_remove = true;
-  else if (k) body.ai_key = k;
-  try { await postJSON("/api/settings", body); await refreshStatus(); $("#settings").close(); }
-  catch (err) { $("#set-msg").textContent = err.message; $("#set-msg").hidden = false; }
+  const sub = document.querySelector("input[name=aimode]:checked")?.value !== "key";
+  const pid = sub ? $("#set-sub").value : $("#set-provider").value;
+  const body = { sec_user_agent: $("#set-ua").value.trim(), ai_provider: pid, ai_model: $("#set-model").value.trim() };
+  if (!sub) {
+    const k = $("#set-key").value.trim();
+    if (k.toLowerCase() === tr("remove_word") || k.toLowerCase() === "remove") body.ai_remove = true;
+    else if (k) body.ai_key = k;
+  }
+  const btn = $("#set-save"), msg = $("#set-msg"), ok = $("#set-ok");
+  msg.hidden = true; ok.hidden = false; ok.textContent = tr("testing"); btn.disabled = true;
+  try {
+    await postJSON("/api/settings", body);
+    const r = await postJSON("/api/ai/test", {});
+    await refreshStatus();
+    ok.textContent = tr("connected", r.provider);
+    await sleep(900);
+    $("#settings").dataset.setup = "";
+    $("#settings").close();
+  } catch (err) {
+    ok.hidden = true; msg.textContent = err.message; msg.hidden = false;
+    await refreshStatus();
+  } finally { btn.disabled = false; }
 });
 
 // ------------------------------------------------------------------ reader
@@ -285,18 +343,18 @@ const I18N = {
   it: {
     of: "di", read: "cifre lette", other: "Altre cifre lette dal ragno", obs: "Osservazioni chiave", yoy: "sull'anno",
     page: "Pagina", p: "p.", pp: "pp.", checks: "controlli superati su", foot_ai: "Osservazioni di Claude, verificate sulle cifre",
-    foot_det: "Calcoli deterministici sulle cifre del documento", pages_some: (l, n) => `Pagine lette: ${l} di ${n} (quelle con i prospetti e le cifre principali)`,
+    foot_det: "Calcoli deterministici sulle cifre del documento", pages_some: (l, n) => `Pagine mostrate: ${l} di ${n} (quelle con i prospetti e le cifre principali)`,
     pages_all: (n) => `Pagine lette: tutte (${n})`, report: "Report", source: "Fonte", made: "Generato da Spider Analyst il",
     figures: "Cifre lette", value: "Valore", label: "Voce", controls: "Controlli aritmetici", ok: "superato", ko: "non superato",
-    print: "Per salvarlo in PDF: File → Stampa → Salva come PDF.", locale: "it-IT",
+    print: "Per salvarlo in PDF: File → Stampa → Salva come PDF.", locale: "it-IT", understood: "Cosa ha capito l'AI", summary: "In sintesi",
   },
   en: {
     of: "of", read: "figures read", other: "Other figures the spider read", obs: "Key findings", yoy: "year on year",
     page: "Page", p: "p.", pp: "pp.", checks: "checks passed out of", foot_ai: "Findings by Claude, checked against the figures",
-    foot_det: "Deterministic calculations on the document's figures", pages_some: (l, n) => `Pages read: ${l} of ${n} (the statements and key figures)`,
+    foot_det: "Deterministic calculations on the document's figures", pages_some: (l, n) => `Pages shown: ${l} of ${n} (the statements and key figures)`,
     pages_all: (n) => `Pages read: all (${n})`, report: "Report", source: "Source", made: "Generated by Spider Analyst on",
     figures: "Figures read", value: "Value", label: "Item", controls: "Arithmetic checks", ok: "passed", ko: "failed",
-    print: "To save as PDF: File → Print → Save as PDF.", locale: "en-US",
+    print: "To save as PDF: File → Print → Save as PDF.", locale: "en-US", understood: "What the AI understood", summary: "In short",
   },
 };
 const L = () => I18N[state.analysis?.lang] || I18N.it;
@@ -353,6 +411,7 @@ async function openAnalysis(id) {
   const shown = a.pages.map((p) => p.n);
   $("#r-pages").textContent = a.total_pages > shown.length ? T.pages_some(shown.join(", "), a.total_pages) : T.pages_all(a.total_pages);
   $("#r-warn").textContent = (a.warnings || []).join(" ");
+  $("#r-reading").hidden = true; $("#r-reading").innerHTML = "";
   state.director?.stop();
   await new Promise((res) => { iframe.onload = res; iframe.src = `/api/doc/${id}/view`; });
   state.director = new Director(a);
@@ -906,6 +965,14 @@ class Director {
     box.hidden = false;
     const finds = a.findings || [];
     const per = reduced ? 300 : this.pace.obs;
+    if (a.reading) {
+      showReading(a);
+      if (a.reading.summary) {
+        box.innerHTML = `<div class="obs sum"><h2>${esc(T.summary)}</h2><p>${esc(a.reading.summary)}</p></div>`;
+        await sleep(30); box.querySelector(".sum").classList.add("in");
+        await sleep(Math.max(1800, per * 2.2));
+      }
+    }
     if (finds.length) {
       box.innerHTML = `<div class="obs"><h2>${esc(T.obs)}</h2><ol>${finds.map((f) =>
         `<li>${esc(f.text)} <span class="pg">${fmtPages(f.pages)}</span></li>`).join("")}</ol></div>`;
@@ -918,6 +985,17 @@ class Director {
     this.stop();
     $("#play").textContent = tr("replay");
   }
+}
+
+// what the AI understood, in the side panel: kind of document, summary, sections of key points
+function showReading(a) {
+  const r = a.reading, T = L(), el = $("#r-reading");
+  el.innerHTML = `<h3>${esc(T.understood)}${r.doc_type ? ` · <span>${esc(r.doc_type)}</span>` : ""}</h3>` +
+    (r.summary ? `<p class="sum">${esc(r.summary)}</p>` : "") +
+    (r.sections || []).map((s) => `<h4>${esc(s.title)}</h4><ul>${s.points.map((p) =>
+      `<li>${esc(p.text)} <span class="pg">${fmtPages(p.pages)}</span></li>`).join("")}</ul>`).join("");
+  el.hidden = false;
+  $("#report").scrollTop = 0;
 }
 
 function cardHTML(a, count) {
@@ -966,12 +1044,13 @@ function hero() {
   requestAnimationFrame(loop);
 }
 
+const deep = new URLSearchParams(location.search).get("doc");
+
 // the reader relies on Chromium behaviour; Safari and Firefox get a clear notice instead of a silent spider
 const isChromium = !!navigator.userAgentData || /\b(Chrome|Chromium|Edg|OPR|Brave)\//.test(navigator.userAgent);
 if (!isChromium) $("#browser-warn").hidden = false;
 
-refreshStatus();
+refreshStatus().then(() => { if (!state.status?.ai && !deep) openSettings(true); });
 loadRecent();
 hero();
-const deep = new URLSearchParams(location.search).get("doc");
 if (deep) openAnalysis(deep);

@@ -4,6 +4,10 @@
 
 Spider Analyst: an animated spider reads financial documents (10-K, ESEF, PDFs, market data) and builds a live report. Runs locally on macOS, Windows and Linux in a Chromium browser. Completely Open Source and free.
 
+An AI reads every document first — what it is, how the business works, the results, the risks, the offering — and
+the spider then walks over the pages that hold what it found. Every number the AI writes is checked against the
+page it comes from.
+
 A from-scratch rebuild of the idea shown in @buildwithbrock's videos. It contains none of his code.
 
 The interface is in English, or in Italian when the operating system's language is Italian (`SPIDER_LANG=en` or
@@ -17,6 +21,8 @@ The interface is in English, or in Italian when the operating system's language 
   **Safari and Firefox are not supported** — the page loads but the spider does not read the document.
   The launcher opens the app in a Chromium browser on its own (your default one if it is Chromium-based).
 - macOS, Windows or Linux.
+- **An AI** (asked on the first start, required): your Claude Pro/Max or ChatGPT subscription, or an API key — see
+  [The AI](#the-ai-required).
 
 ## Start
 
@@ -26,7 +32,7 @@ The interface is in English, or in Italian when the operating system's language 
 | Windows | `Start Spider Analyst.bat` | `py launch.py` |
 
 The first start creates a virtual environment (`.venv`), installs the dependencies (1–2 minutes) and asks for a
-name and email to identify yourself to the SEC (optional). Then the app opens at `http://127.0.0.1:8765`.
+name and email to identify yourself to the SEC (optional). Then the app opens at `http://127.0.0.1:8765` and, the first time, asks you to connect an AI.
 Close the terminal window (or press Ctrl+C) to stop it.
 
 - **macOS blocks the double-click** ("cannot be verified"): use `python3 launch.py` from Terminal, or go to
@@ -40,11 +46,13 @@ Close the terminal window (or press Ctrl+C) to stop it.
 | You look for | The document the spider reads | Source |
 |---|---|---|
 | US-listed companies (MSFT, NVDA, …) | Latest 10-K, 20-F or 40-F in inline XBRL | SEC EDGAR |
+| Companies before an IPO (no ticker yet) | Latest S-1, F-1 or 424B prospectus (tagged or not) | SEC EDGAR full-text search |
 | European companies (Ferrari, ENI, …) | ESEF annual report in inline XBRL | filings.xbrl.org |
 | Crypto, indices, currencies, commodities, ETFs, funds (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | A generated market sheet: chart, calendar-year and monthly returns, volatility, drawdowns | Yahoo Finance (Coinbase as fallback for crypto) |
 | Any other document, in English or Italian: annual report or statements as PDF/HTML, KID, prospectus, factsheet, whitepaper | The file you upload (*Upload a document*) or the URL you paste | Your file / URL |
 
-Each search result offers two actions: **Analyse** (the spider reads it) or **Download original** — the filing as
+Companies without a ticker are found through EDGAR full-text search among the filers of prospectuses and annual
+reports. Each search result offers two actions: **Analyse** (the spider reads it) or **Download original** — the filing as
 published on SEC EDGAR (`.htm`), the ESEF report from filings.xbrl.org (`.xhtml`), or for market instruments the
 daily price history as CSV.
 
@@ -53,10 +61,13 @@ In untagged PDF/HTML the figures are the ones printed on the page. In financial 
 the spider recognises the rows from their labels — Revenue / Ricavi, Net income / Utile netto, Diluted EPS, Net
 cash provided by operating activities, Purchases of property, plant and equipment… — reads the current and prior
 year columns and the scale ("in millions", "in migliaia di euro"), and computes the card, checks and findings as
-for XBRL filings. For other documents (KID, prospectus) it lists the main figures, or the AI model picks them.
+for XBRL filings. Statement lines the label rules do not know (common in IPO prospectuses) are recognised by the AI,
+whose values are checked against the page before they feed the card, checks and charts.
 
 ## Report
 
+- **What the AI understood**: the kind of document, a short summary and the key points by theme (business, results,
+  cash, risks, offering, ownership…), each with its pages — in the side panel at the end of the reading and in the PDF.
 - **Card (financial statements)**: revenue, net income, diluted EPS, free cash flow (operating cash flow − capex),
   each with its year-on-year change and page.
 - **Arithmetic checks**: gross profit = revenue − cost of revenue; assets = liabilities + equity;
@@ -89,9 +100,29 @@ It always reads **every** figure on the pages it opens and adapts its pace to ho
 the figures on those pages, and the panel lists which pages of the document were read (the cover and the pages
 with the financial statements and the key figures).
 
-## AI findings (optional)
+## The AI (required)
 
-Add an API key in *Settings* to tick *Findings written by AI*. Supported providers:
+The first time the page opens it asks how to connect an AI, and checks that it answers. Two ways:
+
+**A subscription you already have.** Spider Analyst runs the vendor's official command-line tool, which you install
+and sign in to yourself; the app never sees or stores your credentials, and the usage counts toward your plan's limits.
+
+| Subscription | Tool | Set up once |
+|---|---|---|
+| Claude Pro / Max | [Claude Code](https://claude.com/product/claude-code) | install it, run `claude`, sign in with your Claude account |
+| ChatGPT Plus / Pro | [Codex CLI](https://github.com/openai/codex) | `npm install -g @openai/codex`, run `codex`, choose *Sign in with ChatGPT* |
+
+The tool runs with no tools enabled (Claude Code: `--tools ""`) or in a read-only sandbox (Codex), in an empty
+folder, and must return JSON that matches the expected schema.
+
+> Terms: Anthropic's [Claude Code legal page](https://code.claude.com/docs/en/legal-and-compliance) says that
+> third-party developers may not "route requests through Free, Pro, or Max plan credentials on behalf of their users",
+> while it does not prevent an end user from signing in to the unmodified Claude Code binary with their own
+> subscription. Spider Analyst does the latter (your own Claude Code, your own account, on your computer), but whether
+> this kind of use fits your plan is for you to judge; Anthropic advises an API key for products built on Claude. If
+> in doubt, use an API key.
+
+**An API key** (billed by the provider to your account):
 
 | Provider | Default model (editable) | Key from |
 |---|---|---|
@@ -103,10 +134,16 @@ Add an API key in *Settings* to tick *Findings written by AI*. Supported provide
 | DeepSeek | `deepseek-chat` | platform.deepseek.com · `DEEPSEEK_API_KEY` |
 | OpenRouter (any model it offers) | `openrouter/auto` | openrouter.ai · `OPENROUTER_API_KEY` |
 
-The model only receives the figures already read, each with an id; any observation with a number that is not among
-the figures it cites is dropped, so the report never shows numbers the document does not contain. On PDFs it picks
-the important figures among those found on the pages. Keys are stored in `~/.spider-analyst/ai.json` (readable only
-by you) or read from the environment variables above. Everything else works without a key.
+**What the AI gets and what is checked.** The text of the pages — all of them when they fit in about 65k tokens,
+otherwise the cover, the summary sections (prospectus summary, risk factors, MD&A, use of proceeds…) and the pages
+densest with financial figures — plus, for XBRL filings, the tagged figures already read. It returns the kind of
+document, a summary, key points by theme, up to 30 important figures with their page, and findings. A figure is kept
+only if its value is printed on the page it cites; a sentence is kept only if each of its numbers is printed in the
+pages read (a finding: in the figures it cites). So the report never shows numbers the document does not contain.
+If the AI fails (network, limits), the reading goes on with the rule-based extraction and the report says so.
+
+Keys and the choice of provider are stored in `~/.spider-analyst/ai.json` (readable only by you) or read from the
+environment variables above.
 
 ## Data and privacy
 
@@ -115,6 +152,8 @@ The server listens on `127.0.0.1` only. Documents and responses are cached in `.
 
 ## Known limits
 
+- The AI reading takes from a few seconds to a couple of minutes for a long prospectus, and costs what the provider
+  charges for about 65k input tokens (or counts toward your subscription's limits). Each report language is a new reading.
 - Financial figures depend on the issuer's tags: rare or custom concepts may be missing (the card shows "—").
 - Free cash flow uses capex on property, plant and equipment; some companies also include intangibles.
 - Yahoo Finance has no official API. It rejects clients that do not look like a browser (HTTP 429), so the app
@@ -129,7 +168,7 @@ launch.py                     cross-platform launcher (venv, dependencies, serve
 Start Spider Analyst.command  macOS/Linux double-click wrapper
 Start Spider Analyst.bat      Windows double-click wrapper
 server.py                     FastAPI server (localhost only)
-analyst/                      sources, iXBRL parser, financials, statements, market sheet, PDF/HTML, AI providers, PDF report and charts, i18n
+analyst/                      sources, iXBRL parser, financials, statements, market sheet, PDF/HTML, AI providers and reader, PDF report and charts, i18n
 web/                          interface, spider animation, live report
 tests/                        offline tests on synthetic documents and simulated APIs
 ```

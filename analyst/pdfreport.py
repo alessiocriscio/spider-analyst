@@ -208,6 +208,20 @@ def _build(a: dict, lang: str) -> bytes:
         rule.keepWithNext = True                    # a section title never ends a page alone
         story.extend([Paragraph(_x(text), S["h2"]), rule])
 
+    # what the AI understood: summary and key points by theme
+    rd = a.get("reading") or {}
+    if rd.get("summary") or rd.get("sections"):
+        h2(t("Cosa ha capito l'AI", "What the AI understood") + (f" · {rd['doc_type']}" if rd.get("doc_type") else ""))
+        if rd.get("summary"):
+            story.append(Paragraph(_x(rd["summary"]), S["body"]))
+        h3s = lambda text: Paragraph(_x(text), S["h3"])
+        for sec in rd.get("sections") or []:
+            head = h3s(sec.get("title", ""))
+            head.keepWithNext = True
+            story.append(head)
+            story.append(ListFlowable([ListItem(Paragraph(_x(p.get("text")) + _tag(p.get("pages")), S["body"]), leftIndent=12)
+                                       for p in sec.get("points") or []], bulletType="bullet", start="•", leftIndent=12))
+
     # findings
     finds = a.get("findings", [])
     if finds:

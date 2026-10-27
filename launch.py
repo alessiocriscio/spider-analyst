@@ -256,6 +256,9 @@ def main():
                "Setting up the environment failed: check the internet connection and try again."))
         return 1
     ask_sec_identity()
+    if not (Path.home() / ".spider-analyst" / "ai.json").exists():
+        say(ui("", "The first time, the page asks you to connect an AI: an API key, or your Claude (Claude Code) "
+                   "or ChatGPT (Codex) subscription."))
     say(ui("Avvio Spider Analyst su %s  (Ctrl+C o chiudere questa finestra lo ferma)",
            "Starting Spider Analyst at %s  (Ctrl+C or closing this window stops it)") % URL)
     proc = subprocess.Popen([str(VPY), str(ROOT / "server.py")], cwd=str(ROOT))

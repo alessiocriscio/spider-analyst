@@ -13,8 +13,11 @@ financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-bas
 - [x] `analyst/statements.py` — untagged statements (English / Italian row labels → metrics)
 - [x] `analyst/market.py` — generated market sheet for instruments without statements
 - [x] `analyst/generic.py` — PDF (page image + word layer) and plain HTML
-- [x] `analyst/ai.py` — optional AI pass (Anthropic SDK; OpenAI, Gemini, Mistral, xAI, DeepSeek, OpenRouter via
-      OpenAI-compatible endpoints), limited to figures already read, numbers validated
+- [x] `analyst/ai.py` — AI providers (required): Anthropic SDK (streamed); OpenAI, Gemini, Mistral, xAI, DeepSeek,
+      OpenRouter via OpenAI-compatible endpoints; Claude Pro/Max via the user's Claude Code CLI (`-p`, no tools,
+      `--json-schema`), ChatGPT plans via the user's Codex CLI (`exec`, read-only sandbox, `--output-schema`); a test call
+- [x] `analyst/reader.py` — the AI reads the document (page selection under a ~65k-token budget, summary, sections,
+      figures with page, findings, statement items → metrics); every number checked against the pages
 - [x] `analyst/pdfreport.py` + `analyst/charts.py` — report PDF drawn with reportlab in the app's style, with charts
       (results vs prior year, margins, balance sheet, cash bridge, ratios; price, yearly returns, drawdown, monthly
       heatmap, risk) — served at `/api/doc/{id}/report.pdf`
@@ -32,7 +35,7 @@ financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-bas
 
 | Instrument | Document the spider reads | Source |
 |---|---|---|
-| SEC registrants | 10-K, 20-F, 40-F (iXBRL) | `www.sec.gov/files/company_tickers.json`, `data.sec.gov/submissions/CIK##########.json`, `www.sec.gov/Archives/edgar/data/{cik}/{accession}/{doc}` |
+| SEC registrants | 10-K, 20-F, 40-F (iXBRL); before an IPO the latest S-1/F-1/424B prospectus (often untagged) | `www.sec.gov/files/company_tickers.json`, `data.sec.gov/submissions/CIK##########.json`, `www.sec.gov/Archives/edgar/data/{cik}/{accession}/{doc}` |
 | EU/UK companies | ESEF annual report (iXBRL, ifrs-full) | `filings.xbrl.org/api/entities?filter=[ilike]`, `/api/entities/{LEI}/filings` → `report_url` |
 | Crypto, indices, FX, commodities, ETFs, funds | Generated market sheet | Yahoo `/v8/finance/chart/{symbol}`, search `/v1/finance/search` |
 | Anything else | Uploaded or linked PDF / HTML | upload / URL |
@@ -67,9 +70,10 @@ Every figure cites its page; the occurrence highlighted is the one on the page w
 - Interface in English, Italian when the OS language is Italian (server-side detection: macOS AppleLanguages,
   Windows UI language, LANG elsewhere); report in English or Italian; downloadable PDF report with charts.
 
-## AI (optional)
+## AI (required)
 
-Anthropic through the `anthropic` SDK 2.x (`claude-opus-5-5`, `output_config` json_schema, `fallbacks="default"`,
+The first start shows a setup that cannot be skipped: a subscription (Claude Code or Codex CLI, installed and
+signed in by the user) or an API key, then a test call. Anthropic through the `anthropic` SDK 2.x (`claude-opus-5-5`, `output_config` json_schema, `fallbacks="default"`,
 refusals handled); OpenAI, Google Gemini, Mistral, xAI, DeepSeek and OpenRouter through their OpenAI-compatible
 `/chat/completions` endpoints with JSON mode (retried without it when a model rejects it). Provider, key and model
 are set in Settings (`~/.spider-analyst/ai.json`) or via environment variables. Numbers in generated observations

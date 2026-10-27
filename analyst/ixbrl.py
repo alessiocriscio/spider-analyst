@@ -109,6 +109,27 @@ def _text(el) -> str:
     return re.sub(r"\s+", " ", "".join(el.itertext())).strip()
 
 
+BLOCK_TAGS = {"td", "th", "tr", "p", "div", "li", "br", "table", "section", "h1", "h2", "h3", "h4", "h5", "h6", "dt", "dd"}
+
+
+def _block_text(el) -> str:
+    """Text with a space between cells and blocks, so "Revenue | 3,400 | 1,100" never reads as "Revenue3,4001,100"."""
+    parts = []
+    for ev, e in etree.iterwalk(el, events=("start", "end")):
+        block = isinstance(e.tag, str) and _local(e.tag).lower() in BLOCK_TAGS
+        if ev == "start":
+            if block:
+                parts.append(" ")
+            if isinstance(e.tag, str) and e.text:
+                parts.append(e.text)
+        else:
+            if block:
+                parts.append(" ")
+            if e is not el and e.tail:
+                parts.append(e.tail)
+    return re.sub(r"\s+", " ", "".join(parts)).strip()
+
+
 def parse_number(text: str, fmt: str) -> Optional[float]:
     f = (fmt or "").split(":")[-1].lower()
     t = (text or "").strip().replace(" ", "").replace(" ", "")
@@ -127,11 +148,18 @@ def parse_number(text: str, fmt: str) -> Optional[float]:
 
 
 def _load_tree(data: bytes):
-    parser = etree.XMLParser(huge_tree=True, recover=True, resolve_entities=False, no_network=True, remove_comments=True)
+    opts = dict(huge_tree=True, resolve_entities=False, no_network=True, remove_comments=True)
     try:
-        root = etree.fromstring(data, parser)
+        root = etree.fromstring(data, etree.XMLParser(**opts))
     except etree.XMLSyntaxError:
         root = None
+        # tagged documents need the XML namespaces even when slightly malformed; plain HTML (old EDGAR filings,
+        # S-1s with unclosed <hr>, <br>, <p>) goes to the HTML parser, or the XML recovery nests whole pages in a tag
+        if b"ix:" in data[:3_000_000]:
+            try:
+                root = etree.fromstring(data, etree.XMLParser(recover=True, **opts))
+            except etree.XMLSyntaxError:
+                root = None
     if root is None or _local(root.tag).lower() != "html" or root.find(".//{*}body") is None:
         root = lxml_html.document_fromstring(data)
     return root
@@ -437,7 +465,7 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
                         facts[int(f)].page = pi
                         n += 1
         page_fact_count.append(n)
-        page_text.append(re.sub(r"\s+", " ", " ".join(_text(t) for t in els)).strip())
+        page_text.append(re.sub(r"\s+", " ", " ".join(_block_text(t) for t in els)).strip())
         pages.append("".join(etree.tostring(t, method="html", encoding="unicode", with_tail=True) for t in els))
 
     if len(pages) < 2:
