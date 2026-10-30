@@ -14,7 +14,7 @@ from typing import Optional
 # metric -> label patterns (whole row label, case-insensitive). First match on the best page wins.
 PATTERNS: dict[str, list[str]] = {
     "revenue": [r"(total )?(net )?(revenues?|sales|turnover)( and other income)?", r"total net sales", r"(total )?(net )?sales to customers",
-                r"(total )?operating revenues?", r"revenues?,? net", r"(total )?net revenues?(,? net of interest expense)?", r"(total )?revenues and other income",
+                r"(total )?(net )?operating revenues?", r"revenues?,? net", r"(total )?net revenues?(,? net of interest expense)?", r"(total )?revenues and other income",
                 r"total revenues,? net of interest expense( after provisions? for credit losses)?",
                 r"margine di intermediazione", r"proventi operativi netti", r"net banking income", r"total operating income", r"total income",
                 r"net interest(,)? (and|fee and) (other|non-?interest|commission) (banking )?(income|revenues?)", r"total net interest and non-?interest income",
@@ -27,12 +27,15 @@ PATTERNS: dict[str, list[str]] = {
                          r"(ebit|operating result)",
                          r"risultato operativo", r"utile operativo", r"reddito operativo"],
     "pretax_income": [r"(income|profit|earnings|loss|\(loss\) income|income \(loss\))( \(loss\))? before (provision for |benefit from |\(benefit from\) provision for |provision for \(benefit from\) )?(income )?tax(es)?",
+                      r"(income|earnings|profit|loss)( \(loss\))? from continuing operations before (provision|\(?benefit|income tax|tax).*",
                       r"(utile|risultato|perdita) (prima|ante) (delle )?imposte"],
     "income_tax": [r"(provision for )?income tax(es| expense)?( expense)?", r"income tax (expense|provision)( \(benefit\))?",
                    r"(provision for|benefit from|\(benefit from\) provision for|provision for \(benefit from\)) income taxes", r"imposte( sul reddito)?( dell'esercizio)?",
                    r"(provision for|benefit from|\(benefit from\) provision for|provision for \(benefit from\)) taxes( on income)?", r"taxes on income",
-                   r"(income )?tax (expense|provision|benefit)( \(benefit\)| \(expense\))?"],
-    "net_income": [r"net (income|profit|earnings|loss|\(loss\) income|income \(loss\)|loss \(income\))( attributable to (?!.*(non-?controlling|minority|redeemable)).*)?",
+                   r"(income )?tax (expense|provision|benefit)( \(benefit\)| \(expense\))?",
+                   r"(provision|benefit) ?/ ?\(?(benefit|provision)\)? for (income )?taxes( on income)?",
+                   r"(benefit|provision) \((provision|benefit)\) for income taxes"],
+    "net_income": [r"(consolidated )?net (income|profit|earnings|loss|\(loss\) income|income \(loss\)|loss \(income\)|income ?/ ?\(loss\)|earnings ?/ ?\(loss\)|\(loss\) ?/ ?income)( attributable to (?!.*(non-?controlling|minority|redeemable)).*)?",
                    r"profit for the (year|period)( attributable to owners.*)?", r"(utile|risultato) netto( dell'esercizio| di gruppo| attribuibile.*)?",
                    r"utile dell'esercizio"],
     "eps_diluted": [r"diluted (earnings|net income|net loss|eps|loss)( \(loss\))?( per (common |ordinary )?share)?( attributable to [^,]*)?( \(.*\))?",
@@ -87,7 +90,8 @@ SCALES = [
 def _clean(label: str) -> str:
     s = label.lower().replace("’", "'").strip(" :.,;")
     s = re.sub(r"\s*\((note|nota) ?\d+\)|\s+\d{1,2}$", "", s)        # note references
-    s = re.sub(r"(?<=[a-z\)])\(\d{1,2}\)|[*†‡]+", "", s)                 # footnote marks: "net loss(2)"
+    s = re.sub(r"(?<=[a-z\)'])\((\d{1,2}|[a-h])\)|[*†‡]+", "", s)          # footnote marks: "net loss(2)", "total assets(a)"
+    s = re.sub(r"\s\(([a-h]|\d{1,2})\)$", "", s)                            # "cost of sales (a)"
     s = re.sub(r"^(voce |item )?\d{1,3}(\.|\))\s*|^(voce |item )?\d{1,3}\s+|^[a-z]\)\s+", "", s)  # line numbers: "120. margine di intermediazione"
     s = re.sub(r"[\$€£]", "", s)
     return re.sub(r"\s+", " ", s).strip(" :.,;")
@@ -191,6 +195,13 @@ def header_dates(text: str, years: list[int]) -> list:
 def header_years(text: str) -> list[int]:
     """The years heading the columns, in their order: the first run of two or more different years printed close
     together ("2017 2018 2019", "June 30, 2023 July 1, 2022", "2023 2022 2023 2022")."""
+    # a line made of years is the column header, even under a dateline that names them too
+    # ("Fiscal years ended December 31, 2022, December 25, 2021 and …" / "2022 2021 2020")
+    for line in text[:2500].splitlines():
+        toks = line.replace("$", " ").split()
+        ys = [int(x) for x in toks if YEAR.fullmatch(x)]
+        if len(ys) >= 2 and len(set(ys)) > 1 and all(YEAR.fullmatch(x) or x.lower() in ("note", "notes", "nota", "note:", "%", "change") for x in toks):
+            return ys
     run: list[tuple[int, int]] = []
     for m in YEAR.finditer(text[:2500]):
         pos, y = m.start(), int(m.group(1))
@@ -200,7 +211,21 @@ def header_years(text: str) -> list[int]:
         if len(run) >= 2 and len({v for _, v in run}) > 1:
             break
         run = [(pos, y)]
-    return [y for _, y in run] if len(run) >= 2 and len({v for _, v in run}) > 1 else []
+    ys = [y for _, y in run] if len(run) >= 2 and len({v for _, v in run}) > 1 else []
+    if ys:
+        # a dateline just above the header names the years in prose ("Years Ended May 31, 2023, 2022 and 2021"
+        # reads as 2022 2021): the header right after it, with a later year, is the one
+        later = header_years(text[run[-1][0] + 4:run[0][0] + 400]) if run[-1][0] + 4 < len(text) else []
+        if later and max(later) > max(ys):
+            return later
+    # a dateline running into the header ("… 2022, 2021, and 2020  2022 2021 2020" read as 2020 2022 2021 2020):
+    # columns are in order (2022 2021 2020), or the same block twice (2023 2022 2023 2022)
+    def ordered(v):
+        mono = lambda s: len(s) >= 2 and (all(a > b for a, b in zip(s, s[1:])) or all(a < b for a, b in zip(s, s[1:])))
+        return mono(v) or (len(v) % 2 == 0 and v[:len(v) // 2] == v[len(v) // 2:] and mono(v[:len(v) // 2]))
+    while len(ys) > 3 and not ordered(ys) and ordered(ys[1:]):
+        ys = ys[1:]
+    return ys
 
 
 def page_period(text: str) -> dict:
@@ -217,6 +242,9 @@ def page_period(text: str) -> dict:
     md = re.search(r"(?:ended|ending|as of|as at|at)\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b", lo)
     fq = re.search(r"\b(first|second|third|fourth)[- ]quarter\b", lo)
     instant = months is None and bool(re.search(r"balance sheet|financial position|as of|as at|stato patrimoniale|situazione patrimoniale", lo))
+    if md is None and instant:
+        # a balance sheet headed by its date alone: "BALANCE SHEETS (In millions) June 30, 2023 2022"
+        md = re.search(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b", lo[:400])
     return {"months": months[0] if months else None, "month": MONTH_NO[md.group(1)] if md else 12,
             "day": int(md.group(2)) if md else 31, "instant": instant,
             "fiscal_q": ["first", "second", "third", "fourth"].index(fq.group(1)) + 1 if fq and not md else None}
@@ -253,6 +281,48 @@ def page_statement(text: str) -> str:
     return ""
 
 
+HEADER_NEAR = re.compile(r"(quarters?|years?|months|weeks|periods?) ended|\(in (millions|thousands|billions)|\((millions|thousands|dollars)|esercizio|migliaia|milioni", re.I)
+
+
+def statement_start(text: str) -> int:
+    """Where a statement printed lower on the page begins (a release's text above its statement of earnings):
+    its title followed by its column header. 0 when the page opens with it, or holds none."""
+    if STATEMENT_TITLE.search(text[:700]):
+        return 0
+    for m in STATEMENT_TITLE.finditer(text):
+        if HEADER_NEAR.search(text[m.end():m.end() + 250]):
+            return m.start()
+    return 0
+
+
+def statement_pages(texts: list[str]) -> list[int]:
+    """0-based pages of the primary statements (income, balance sheet, cash flows): a page titled as one near its
+    top and full of figures; consolidated before parent-company, the statement itself before its analysis or notes.
+    For each statement: the first such page and the fullest one (they differ when a summary or a guarantor's
+    statements share the title)."""
+    best: dict[str, tuple] = {}
+    first: dict[str, tuple] = {}
+    for i, t in enumerate(texts):
+        t = t[statement_start(t):]
+        head = t[:300]
+        kind = page_statement(head)
+        if not kind or re.search(r"analysis of|notes to|discussion and analysis|report of independent|exhibits and financial statement schedules", head, re.I):
+            continue
+        title = STATEMENT_TITLE.search(t[:700])
+        if not title or not (HEADER_NEAR.search(t[title.end():title.end() + 300]) or header_years(t[title.end():title.end() + 300])):
+            continue                                   # a title with its column header under it, not a mention
+        figs = len(re.findall(r"\(?\d[\d,]{2,}\)?", t))
+        if figs < 12:
+            continue
+        rank = (not re.search(r"parent company|registrant|capogruppo", head, re.I), "consolidat" in head.lower(),
+                not re.search(r"comprehensive", head, re.I), figs)
+        if kind not in best or rank > best[kind][0]:
+            best[kind] = (rank, i)
+        if kind not in first or rank[:3] > first[kind][0]:
+            first[kind] = (rank[:3], i)
+    return sorted({i for _, i in best.values()} | {i for _, i in first.values()})
+
+
 def _is_note_ref(f: dict) -> bool:
     return bool(re.fullmatch(r"\d{1,2}", f["display"].strip()))
 
@@ -268,7 +338,12 @@ def _drop_note_ref(nums: list, years: list) -> list:
 
 
 def _amounts(nums: list, key: str) -> list:
-    """Drop "% of sales" and "% change" columns printed between the amounts (one decimal, at most 100)."""
+    """Drop "% of sales" and "% change" columns printed between the amounts (one decimal, at most 100), and keep
+    amounts and per-share figures apart when one label heads both ("Net income attributable to …" over the
+    amount and, again, over earnings per share; "Diluted" over EPS and over the share count)."""
+    per_share = [f for f in nums if re.fullmatch(r"\(?-?\d{1,3}\.\d{2,3}\)?", f["display"].strip("$€£ "))]
+    if per_share and len(per_share) < len(nums):
+        nums = per_share if key in PER_SHARE else [f for f in nums if f not in per_share]
     if key in PER_SHARE or len(nums) < 3:
         return nums
     pct = [f for f in nums if re.fullmatch(r"\(?-?\d{1,3}\.\d\)?%?", f["display"].strip("$ ")) and abs(f["value"]) <= 100]
@@ -297,6 +372,8 @@ def _columns(nums: list, years: list, quarters: Optional[list] = None) -> tuple:
 
 def extract(facts: list[dict], page_text: dict[int, str]) -> dict:
     """facts: [{id, label, value, display, page}] -> {"metrics", "currency", "years", "periods"} like financials.extract()."""
+    # the column header, period and scale of a page are those of the statement on it, wherever it starts
+    page_text = {p: t[statement_start(t):] for p, t in page_text.items()}
     from datetime import date
     import calendar
     from . import financials as F
@@ -338,6 +415,9 @@ def extract(facts: list[dict], page_text: dict[int, str]) -> dict:
         page, nums, _ = max(cands, key=lambda c: (titled.get(c[0], 0) >= 2 and kind_of.get(c[0]) == statement_of(key), titled.get(c[0], 0),
                                                    kind_of.get(c[0]) == statement_of(key), page_hits[c[0]], _line_rank(key, c[2]),
                                                    len(c[1]) >= 2, -c[0]))
+        has_statement = any(k == statement_of(key) and titled.get(p, 0) >= 2 for p, k in kind_of.items())
+        if has_statement and kind_of.get(page) != statement_of(key) and len(nums) < 2:
+            continue                                   # a lone figure elsewhere (a segment's) is not the statement's line
         text = page_text.get(page, "")
         ys = header_years(text)
         qs = header_quarters(text)

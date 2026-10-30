@@ -46,8 +46,9 @@ def choose_pages(texts: list[str], must: Optional[list[int]] = None) -> list[int
         head = texts[i][:400].lower()
         toc = head.count("table of contents") > 0 and len(re.findall(r"\b\d{1,3}\b", texts[i])) > 25 and i < 15
         return _score_text(texts[i]) + 40 * sum(h in head for h in SECTION_HINTS) - (200 if toc else 0)
+    from .statements import statement_pages
     first = [i for i in live if len(texts[i]) > 400][:3]
-    must = [i for i in (must or []) if i in live]
+    must = [i for i in list(must or []) + statement_pages(texts) if i in live]
     picked, used = [], 0
     for i in list(dict.fromkeys(must + first)) + sorted(live, key=lambda i: -score(i)):
         if i in picked:

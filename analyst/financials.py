@@ -181,9 +181,11 @@ def extract(doc: IxDoc) -> dict:
     if missing:
         by_label: dict[str, dict] = {}
         for f in doc.facts:
-            if f.value is None or f.context not in doc.contexts or doc.contexts[f.context].dimensional or not f.row_label:
+            if f.value is None or f.context not in doc.contexts or doc.contexts[f.context].dimensional or not (f.row_label or "Exchange" in f.local):
                 continue
             key = statements.match(f.row_label)
+            if key is None and "EffectOfExchangeRate" in f.local and "Cash" in f.local:
+                key = "fx_effect"                      # "eni:EffectOfExchangeRateChangesAndOtherChangesOnCash…", unlabelled
             role = per.role(f)
             if key in missing and role and (METRICS[key][2] == "stock") == bool(doc.contexts[f.context].instant):
                 by_label.setdefault(key, {}).setdefault(role, []).append(f)

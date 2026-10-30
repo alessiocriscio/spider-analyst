@@ -218,9 +218,11 @@ def clean_title(title: str) -> str:
 
 def best_pages(texts: list[str], n: int = MAX_PAGES_SHOWN) -> list[int]:
     """The first page and the pages that look like they hold the figures that matter (0-based)."""
-    cand = sorted(((_score_text(txt), i) for i, txt in enumerate(texts)), reverse=True)
+    from . import statements
     first = next((i for i, t in enumerate(texts) if t.strip()), 0)
-    return sorted({first} | {i for sc, i in cand[:n - 1] if sc > 0})
+    keep = {first} | set(statements.statement_pages(texts))          # the statements themselves, always
+    cand = sorted(((_score_text(txt), i) for i, txt in enumerate(texts) if i not in keep), reverse=True)
+    return sorted(keep | {i for sc, i in cand[:max(0, n - len(keep))] if sc > 0})
 
 
 def _score_text(text: str) -> float:
@@ -303,12 +305,13 @@ def _label_figures(words: list[dict]) -> list[dict]:
     out = []
     lines = _lines(words)
     for li, ln in enumerate(lines):
-        # a 1-2 digit number on a row of formatted amounts is a note reference, not a figure
-        amounts = sum(1 for w in ln if is_figure(w["t"]) and re.search(r"\d[.,]\d", w["t"]))
+        # a 1-2 digit number in front of a row of formatted amounts is a note reference, not a figure;
+        # between the amounts it is one ("Net income  $ (6,841)  $ 78  $ (5,865)")
+        amount_x = [w["x"] for w in ln if is_figure(w["t"]) and re.search(r"\d[.,]\d", w["t"])]
         for k, wd in enumerate(ln):
             if not is_figure(wd["t"], allow_digit=True):
                 continue
-            if amounts >= 2 and re.fullmatch(r"\d{1,2}", wd["t"]):
+            if len(amount_x) >= 2 and re.fullmatch(r"\d{1,2}", wd["t"]) and wd["x"] < min(amount_x):
                 continue
             prev_w = ln[k - 1]["t"] if k > 0 else ""
             if re.fullmatch(r"\d{1,2},?", wd["t"]) and MONTH_END.search(prev_w):
@@ -320,7 +323,7 @@ def _label_figures(words: list[dict]) -> list[dict]:
             next_w = ln[k + 1]["t"] if k + 1 < len(ln) else ""
             if wd["t"].startswith("(") and not wd["t"].endswith(")") and next_w[:1].isalpha():
                 continue                                  # "(17 CFR 240.14d-2(b))"
-            label_words = [w["t"] for w in ln[:k] if not is_figure(w["t"]) and not re.fullmatch(r"[\W\d]+", w["t"])][-9:]
+            label_words = [w["t"] for w in ln[:k] if not is_figure(w["t"]) and not re.fullmatch(r"[\W\d]+", w["t"])][-14:]
             label = " ".join(label_words)
             if not label and li > 0:
                 label = " ".join(w["t"] for w in lines[li - 1] if not is_figure(w["t"]))[:80]
@@ -337,7 +340,7 @@ def _label_figures(words: list[dict]) -> list[dict]:
                 continue
             if wd["t"].endswith("%"):
                 sc += 0.5
-            out.append({"word": wd, "label": label[:90], "value": v, "score": sc})
+            out.append({"word": wd, "label": label[:120], "value": v, "score": sc})
     return out
 
 

@@ -70,11 +70,28 @@ no longer called "Q2" from the calendar (Apple's fiscal Q3 ends in June): "3M to
 
 ### 3. More real documents
 
-- [ ] More FinanceBench PDFs (other sectors: retail, pharma, telecom, industrials, media; 10-Q and 8-K releases).
-- [ ] More ESEF (Italian: Eni, Leonardo, Campari, Pirelli, Poste, Mediobanca, Unipol, Terna; others: SAP, Siemens,
-      TotalEnergies, ING, Nokia, Philips).
-- [ ] Live SEC: 10-K, 10-Q, 8-K exhibit 99.1, 20-F, S-1 of a few companies.
-- [ ] Every document also through the PPTX and XLSX exports. Fix what breaks; add a regression test per bug class.
+- [x] 25 more FinanceBench PDFs (`$SC/real2`: 10-K of Coca-Cola, PepsiCo, Nike, Netflix, Walmart, Verizon, Pfizer, CVS,
+      Microsoft, Oracle, PayPal, General Mills, Kraft Heinz, MGM, Ulta, Salesforce, FedEx, AES; 10-Q of 3M, Apple,
+      American Water, Corning, Lockheed (a release printed from HTML); releases of eBay, Best Buy).
+- [x] 12 more ESEF by name (Eni, Leonardo, Campari, Pirelli, Poste, Mediobanca Intl., Unipol, Terna, Nokia, Philips,
+      TotalEnergies; SAP has none on filings.xbrl.org).
+- [x] Live SEC: the document list (data.sec.gov) for Apple, Amazon, Broadcom. Documents (www.sec.gov) are not
+      reachable from the dev session: covered by simulated responses.
+- [x] Every document also through the PPTX and XLSX exports (`verify.py`, `esefnames.py` build both).
+- Bugs found and fixed (regression tests in `tests/test_layouts.py`):
+  - wrong figures: Pfizer net income from an investee's note (the income statement page was not among the pages
+    read → statement pages always included), AES/Oracle/PepsiCo years (a dateline naming the years ran into the
+    column header), 3M prior-quarter $78M dropped as a note reference, PepsiCo EPS mixed with the share count
+    under one "Diluted" label, Lockheed net income from the 6-month cash flow (statement printed mid-page),
+    MGM revenue from a segment table (lone off-statement figures dropped), Nike revenue from a segment table
+  - missing: Coca-Cola "Net operating revenues", Walmart "Consolidated net income attributable to", Kraft Heinz
+    "Net income/(loss)", JPMorgan "Total assets(a)", Pfizer 10-word pretax label, MGM "Benefit (provision)"
+  - periods: Microsoft/Nike balance sheet dated without "as of"; quarters named neutrally
+  - ESEF: name search ranked "Renishaw" for "eni" and "Credit Suisse International" for "terna" (word match first,
+    100 candidates); Eni's unlabelled FX extension concept; an iXBRL report tagging only its name is read as HTML
+- Still open (honest): EPS missing when the diluted EPS row is labelled by a section header only (Pfizer, Verizon,
+  CVS, Corning, American Water, AES); Pirelli tags EPS 0.496 as 496 (issuer's format); MGM's total revenue line is
+  unlabelled; Mediobanca International (no tagged figures, tables not recognised) gives no card without the AI.
 
 ### 4. Faster spider (last, only if it does not touch the reading)
 

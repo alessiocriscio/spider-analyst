@@ -131,3 +131,56 @@ def test_busy_server_is_retried_and_huge_documents_refused(tmp_path, monkeypatch
     with pytest.raises(sources.SourceError):
         sources.fetch("https://filings.xbrl.org/y.xhtml", ttl=None, max_bytes=1000)
     assert sources.MAX_DOC >= 400_000_000
+
+
+def test_column_headers_and_dates_seen_in_real_10ks():
+    from analyst import statements as S
+    # a dateline naming the years in prose runs into the column header (Oracle, AES, PepsiCo)
+    assert S.header_years("STATEMENTS OF OPERATIONS For the Years Ended May 31, 2023, 2022 and 2021 Year Ended May 31, "
+                          "(in millions, except per share data) 2023 2022 2021 Revenues") == [2023, 2022, 2021]
+    assert S.header_years("Years ended December 31, 2022, 2021, and 2020 2022 2021 2020 (in millions") == [2022, 2021, 2020]
+    assert S.header_years("Fiscal years ended December 31, 2022, December 25, 2021 and December 26, 2020\n"
+                          "(in millions except per share amounts)\n2022 2021 2020\nNet Revenue") == [2022, 2021, 2020]
+    # three balance sheet columns, one year repeated (Foot Locker): kept as printed
+    assert S.header_years("October 29, October 30, January 29, 2022 2021 2022 ASSETS") == [2022, 2021, 2022]
+    # a balance sheet headed by its date alone (Microsoft, Nike)
+    p = S.page_period("BALANCE SHEETS (In millions) June 30, 2023 2022 Assets Current assets: Cash")
+    assert p["instant"] and (p["month"], p["day"]) == (6, 30)
+    # footnote letters on a label (JPMorgan); a long label (Pfizer)
+    assert S.match("Total assets(a)") == "total_assets" and S.match("Cost of sales (a)") == "cost_of_revenue"
+    assert S.match("Income from continuing operations before provision/(benefit) for taxes on income") == "pretax_income"
+    assert S.match("Consolidated net income attributable to Walmart") == "net_income"
+    assert S.match("Net income/(loss) attributable to common shareholders") == "net_income"
+    assert S.match("Net income/(loss) attributable to noncontrolling interest") is None
+    assert S.match("Net operating revenues") == "revenue"
+
+
+def test_statement_printed_below_a_release_and_statement_pages():
+    from analyst import statements as S
+    release = ("forward-looking statements, see the Annual Report on Form 10-K for the year ended Dec. 31, 2022. " * 10 +
+               "Consolidated Statements of Earnings (in millions) Quarters Ended Six Months Ended June 25, 2023 June 26, 2022 "
+               "June 25, 2023 June 26, 2022 Net sales $ 16,693 $ 15,446 $ 31,819 $ 30,490")
+    start = S.statement_start(release)
+    assert release[start:].startswith("Consolidated Statements of Earnings")
+    assert S.page_period(release[start:])["months"] == 3
+    audit = "Report of Independent Registered Public Accounting Firm. We have audited the consolidated balance sheets and the " \
+            "consolidated statements of income for the years ended May 31, 2023 and 2022 " + "1,234 " * 20
+    stmt = "CONSOLIDATED STATEMENTS OF INCOME YEAR ENDED MAY 31, (In millions) 2023 2022 2021 Revenues $ 51,217 " + "1,234 " * 20
+    assert S.statement_pages([audit, stmt]) == [1]
+
+
+def test_amounts_and_per_share_under_one_label_and_a_two_digit_amount(no_ai, tmp_path):
+    """PepsiCo prints "Diluted" over EPS and over the share count; Pfizer "Net income attributable to …" over the amount
+    and over EPS; 3M's prior-quarter net income is $78 million, between larger amounts."""
+    pytest.importorskip("reportlab")
+    ops = _statement("CONSOLIDATED STATEMENT OF INCOME", "(Millions, except per share amounts)", ["2023", "2022"], [
+        ("Net sales", "$8,325", "$8,702"), ("Total operating expenses", "16,020", "8,105"), ("Operating income (loss)", "(7,695)", "597"),
+        ("Income (loss) before income taxes", "(8,734)", "(13)"), ("Provision (benefit) for income taxes", "(1,898)", "(95)"),
+        ("Net income (loss) attributable to Example", "(6,836)", "78"),
+        ("Net income (loss) attributable to Example", "(12.35)", "0.14"),
+        ("Diluted", "(12.35)", "0.14"), ("Diluted", "553.9", "572.7")], above="Three months ended June 30,")
+    data = _pdf(tmp_path / "q.pdf", [[(50, 740, "Example Company", True, False)], ops])
+    a = pipeline.run({"kind": "upload", "data": data, "name": "q.pdf", "lang": "en"}, lambda *_: None)
+    card = {t["key"]: t for t in a["card"]}
+    assert card["net_income"]["display"] == "−$6.8B" and card["net_income"]["prev_display"] == "$78.0M"
+    assert card["eps_diluted"]["display"] == "−$12.35"

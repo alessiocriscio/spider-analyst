@@ -105,8 +105,11 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
     if F.is_financial(doc):
         m.pop("capex", None)                   # no free cash flow for banks and insurers
     if not m:
-        raise sources.SourceError(ui("Nessuna cifra di bilancio riconosciuta nei tag XBRL di questo documento.",
-                                     "No financial figures recognised in this document's XBRL tags."))
+        # tagged with names only (an issuer of notes tags its name, not its statements): read its pages instead
+        meta.setdefault("warnings", []).append(t("Il documento iXBRL non etichetta le cifre di bilancio: lette dalle sue tabelle.",
+                                                 "The iXBRL document does not tag its financial figures: read from its tables."))
+        name = doc.info.get("NameOfReportingEntityOrOtherMeansOfIdentification") or doc.info.get("EntityRegistrantName") or meta.get("company") or url.rsplit("/", 1)[-1]
+        return from_generic(data, name, url, meta, use_ai, progress)
     d = F.derive(m)
     checks = F.checks(m)
     # the periods compared: the filing's period and the same period a year earlier ("FY2025" / "Q2 2026")

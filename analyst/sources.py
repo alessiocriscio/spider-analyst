@@ -295,15 +295,17 @@ def esef_entities(name: str, limit: int = 8) -> list[dict]:
         flt = [{"name": "identifier", "op": "eq", "val": name.upper()}]
     else:
         flt = [{"name": "name", "op": "ilike", "val": f"%{name}%"}]
-    url = f"{XBRL_ORG}/api/entities?" + urlencode({"filter": json.dumps(flt), "page[size]": limit})
+    url = f"{XBRL_ORG}/api/entities?" + urlencode({"filter": json.dumps(flt), "page[size]": 100})
     out = []
     for e in fetch_json(url, ttl=7 * DAY).get("data", []):
         a = e.get("attributes", {})
         lei = a.get("identifier") or e.get("id")
         if lei:
             out.append({"lei": lei, "name": a.get("name", ""), "country": a.get("country", "")})
-    # shortest name first: "Ferrari N.V." before "Ferrari Group plc"
-    out.sort(key=lambda x: len(x["name"]))
+    # the name as a word first ("Eni S.p.A." before "Renishaw", "Terna" before "Credit Suisse International"),
+    # then the name it starts with, then the shortest: "Ferrari N.V." before "Ferrari Group plc"
+    word = re.compile(r"(?<![a-z0-9])" + re.escape(name.lower()) + r"(?![a-z0-9])")
+    out.sort(key=lambda x: (not word.search(x["name"].lower()), not x["name"].lower().startswith(name.lower()), len(x["name"])))
     return out[:limit]
 
 
