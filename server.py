@@ -24,7 +24,7 @@ from analyst.i18n import system_lang, ui
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 PORT = int(os.environ.get("SPIDER_PORT", "8765"))
-MAX_UPLOAD = 80_000_000
+MAX_UPLOAD = 400_000_000
 
 app = FastAPI(title="Spider Analyst", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=WEB), name="static")
@@ -190,7 +190,7 @@ async def upload(file: UploadFile = File(...), lang: str = Form("it")):
     _need_ai()
     data = await file.read(MAX_UPLOAD + 1)
     if len(data) > MAX_UPLOAD:
-        raise HTTPException(413, ui("File troppo grande (max 80 MB)", "File too large (max 80 MB)"))
+        raise HTTPException(413, ui("File troppo grande (max 400 MB)", "File too large (max 400 MB)"))
     return {"job": _start({"kind": "upload", "data": data, "name": file.filename or "documento", "ai": True, "lang": lang})}
 
 

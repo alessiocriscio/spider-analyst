@@ -41,7 +41,7 @@ html,body{margin:0;background:transparent}
 
 
 # bumped whenever the reading changes, so documents read by older code are read again
-PIPELINE_VERSION = 4
+PIPELINE_VERSION = 5
 
 
 def _id(*parts) -> str:
@@ -102,6 +102,8 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
     progress(ui("Estrazione delle cifre", "Extracting the figures"), 0.55)
     x = F.extract(doc)
     m, cur, per = x["metrics"], x["currency"], x["periods"]
+    if F.is_financial(doc):
+        m.pop("capex", None)                   # no free cash flow for banks and insurers
     if not m:
         raise sources.SourceError(ui("Nessuna cifra di bilancio riconosciuta nei tag XBRL di questo documento.",
                                      "No financial figures recognised in this document's XBRL tags."))
@@ -390,8 +392,9 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
             common["subtitle"] = common["subtitle"].replace(t("Documento", "Document"), t("Bilancio", "Financial statements"), 1)
         return save({**stmt, **common}, view)
 
+    # without statements and without the AI, only figures named by headline words make the card
     keyed = [next(f for f in g["facts"] if f["id"] == fact_of[i]) for i in sorted(fact_of)] if ai_used else \
-        sorted((f for f in g["facts"] if facts[f["id"]]["key"]), key=lambda f: -f["score"])
+        sorted((f for f in g["facts"] if f["score"] >= 3), key=lambda f: -f["score"])
     if not finds:
         finds = [{"text": f"{facts[f['id']]['label']}: {f['display']}.", "pages": [f["page"]]} for f in keyed[:6]]
     card = [{"key": str(f["id"]), "it": _short(facts[f["id"]]["label"]), "en": "", "display": f["display"], "yoy_display": "", "pages": [f["page"]]}

@@ -214,10 +214,20 @@ def _style_has_break(el, which: str) -> bool:
 
 
 PAGE_CLASS = re.compile(r"(^|\s)(pageview|page|pf|pagecontainer|page-container)(\s|$)", re.I)
+PAGE_TOKEN = re.compile(r"^(pf\d*|[\w-]*page[\w-]*)$", re.I)
+NOT_PAGE = re.compile(r"num|number|break|header|footer|nav|title|link", re.I)
 
 
 def _page_like(el) -> bool:
-    return bool(PAGE_CLASS.search(el.get("class") or ""))
+    """A page container by its class: "pageView" (Workiva), "pf" (pdf2htmlEX), "dmpage", "page-1"…"""
+    cls = el.get("class") or ""
+    if PAGE_CLASS.search(cls):
+        return True
+    return any(PAGE_TOKEN.match(tok) and not NOT_PAGE.search(tok) for tok in cls.split())
+
+
+def _hidden(el) -> bool:
+    return "display:none" in (el.get("style") or "").replace(" ", "").lower()
 
 
 BOX_HEIGHT = re.compile(r"(?:^|;)\s*height:\s*[\d.]+\s*(pt|px|in|mm|cm)", re.I)
@@ -276,14 +286,28 @@ def _group(kids: list) -> list[list]:
 
 def _split_pages(body) -> list[list]:
     container = body
-    for _ in range(5):
+    for _ in range(6):
         kids = [k for k in container if isinstance(k.tag, str)]
         pages = _group(kids)
         if len(pages) >= 2:
             return pages
-        if len(kids) != 1:
+        shown = [k for k in kids if not _hidden(k)]
+        if len(shown) != 1:
             break
-        container = kids[0]
+        container = shown[0]
+    # page containers further down (pdf2htmlEX puts its .pf pages inside wrappers): the parent holding most of them
+    best, best_n = None, 0
+    for el in body.iter():
+        if not isinstance(el.tag, str) or len(el) < 3:
+            continue
+        kids = [k for k in el if isinstance(k.tag, str)]
+        n = sum(1 for k in kids if _page_like(k) or _page_box(k))
+        if n >= 3 and n >= 0.5 * len(kids) and n > best_n:
+            best, best_n = el, n
+    if best is not None:
+        pages = _group([k for k in best if isinstance(k.tag, str)])
+        if len(pages) >= 2:
+            return pages
     # breaks nested deeper: use the parent that holds most of them
     breaks = [e for e in body.iter() if isinstance(e.tag, str) and (_style_has_break(e, "after") or _style_has_break(e, "before"))]
     if breaks:
@@ -293,7 +317,38 @@ def _split_pages(body) -> list[list]:
             pages = _group([k for k in parent if isinstance(k.tag, str)])
             if len(pages) >= 2:
                 return pages
-    return [[k for k in body if isinstance(k.tag, str)]]
+    return _chunks(body)
+
+
+CHUNK = 6000          # characters in a page cut from a document that has none
+
+
+def _chunks(body) -> list[list]:
+    """Reflowed documents without pages: blocks of about a printed page, cut at block boundaries, preferably
+    before a heading, so the spider and the AI have pages to work with."""
+    tops = [k for k in body if isinstance(k.tag, str)]
+    total = sum(len(_text(k)) for k in tops)
+    if total <= CHUNK * 3:
+        return [tops]
+
+    def blocks(el, depth=0):
+        if _hidden(el) or depth > 8 or len(_text(el)) <= CHUNK or not any(isinstance(c.tag, str) for c in el):
+            yield el
+            return
+        for c in el:
+            if isinstance(c.tag, str):
+                yield from blocks(c, depth + 1)
+    pages: list[list] = [[]]
+    size = 0
+    for b in (b for t in tops for b in blocks(t)):
+        n = len(_text(b))
+        is_head = _local(b.tag).lower() in ("h1", "h2", "h3") or "titre" in (b.get("class") or "") or "title" in (b.get("class") or "").lower()
+        if pages[-1] and (size + n > CHUNK or (is_head and size > CHUNK / 2)):
+            pages.append([])
+            size = 0
+        pages[-1].append(b)
+        size += n
+    return [p for p in pages if p]
 
 
 def _sanitize(root, base_url: Optional[str]):

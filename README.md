@@ -75,9 +75,16 @@ In untagged PDF/HTML the figures are the ones printed on the page:
   Purchases of property and equipment, Net increase in cash…
 - **Not figures**: days in dates ("June 30"), footnote marks ("Net loss(2)", "(Note 13)"), par values, phone
   numbers and ZIP codes are skipped.
-- In PDFs the rows are recognised from their labels on the page with the year columns and scale; statement lines no
-  rule knows are recognised by the AI, whose values are checked against the page before they feed the card, checks
-  and charts.
+- In PDFs the rows are recognised from their labels on the page with the column periods and scale: years in either
+  order (2022 2023 2024 or the reverse), quarter codes (1Q23 vs 1Q22), "Three Months Ended", "Thirteen Weeks Ended",
+  "Second Quarter", dates printed on a line of their own; note-reference and "% to sales" columns are left out, labels
+  wrapped onto two lines are joined, the consolidated statements win over the parent-company ones and over segment
+  tables. Statement lines no rule knows are recognised by the AI, whose values are checked against the page before
+  they feed the card, checks and charts.
+- **Banks and insurers**: net interest and other banking income, total net revenue, insurance revenue (IFRS 17) count
+  as revenue; free cash flow is not computed for them (capex means little for a bank's cash flow statement).
+- **ESEF reports** laid out with page containers (`pf`, `page…` classes, nested) or with no pages at all (the text
+  is cut into pages at headings) are split too; issuer-specific concepts are recognised by the label of their row.
 
 ## Report
 
@@ -88,8 +95,10 @@ In untagged PDF/HTML the figures are the ones printed on the page:
   H1 2025") — or the comparative value when a loss makes a percentage meaningless — and the page.
 - **Arithmetic checks**, only those the figures allow: revenue − operating expenses = operating income;
   pre-tax income − taxes = net income; assets = liabilities (+ redeemable preferred stock) + equity; diluted EPS ×
-  diluted shares ≈ net income; operating + investing + financing cash flows ≈ change in cash; gross profit = revenue −
-  cost of revenue. When none is possible the report says so; it never calls figures "verified" without a check.
+  diluted shares ≈ net income; operating + investing + financing cash flows (+ exchange rates, + cash moved to assets
+  held for sale) ≈ change in cash; gross profit = revenue − cost of revenue. A gap that other lines explain (amortisation
+  between gross profit and costs, an exchange-rate line not read) is shown with its amount and the reason, not as a
+  pass. When no check is possible the report says so; it never calls figures "verified" without a check.
 - **Findings**: growth, margins, cash conversion, shareholder returns, interest coverage, debt due vs cash,
   liquidity, leverage — deterministic calculations on the document's figures.
 - **Language**: Italian or English, chosen on the home page or while reading (the report is regenerated:
@@ -180,6 +189,11 @@ The server listens on `127.0.0.1` only. Documents and responses are cached in `.
 - The AI reading takes from a few seconds to a couple of minutes for a long prospectus, and costs what the provider
   charges for about 65k input tokens (or counts toward your subscription's limits). Each report language is a new reading.
 - Financial figures depend on the issuer's tags: rare or custom concepts may be missing (the card shows "—").
+- Documents up to 400 MB (a large ESEF report such as Enel's is 130 MB and takes about 10 s and 700 MB of memory).
+  filings.xbrl.org and SEC EDGAR answer "busy" (HTTP 429/503) at times: the app waits and retries three times.
+- Untagged PDFs are read from their layout: a statement printed as an image (a scan) has no text to read, and an
+  unusual layout can leave a line unread or take it from another table; the page of every figure is shown so it can
+  be checked. Checked on 19 real SEC filings and earnings releases (FinanceBench) and 10 ESEF reports — see PLAN.md.
 - Free cash flow uses capex on property, plant and equipment; some companies also include intangibles.
 - Yahoo Finance has no official API. It rejects clients that do not look like a browser (HTTP 429), so the app
   talks to it through `curl_cffi`, which presents itself as Chrome, with a session cookie and both hosts. For crypto

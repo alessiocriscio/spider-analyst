@@ -160,10 +160,60 @@ def pdf_document(data: bytes, img_dir: Path, img_url: str, choose: Chooser = Non
                      f'<img src="{img_url}/p{i + 1}.jpg" alt="">{"".join(spans)}</div>'),
         })
         page_text.append(" ".join(wd["t"] for wd in words))
-    title = (pdf.get_metadata_dict().get("Title") or "").strip()
+    meta = clean_title((pdf.get_metadata_dict().get("Title") or "").strip())
+    if re.search(r"_|\d[\d.-]{3,}|^exhibit|^ex-?\d", meta, re.I):
+        meta = company_line(texts[:2]) or meta                   # "Q1 23_EarningsRelease", "Exhibit 99.1 - 6.30.2023"
+    title = cover_name(texts[:3]) or meta or company_line(texts[:2])
     pdf.close()
     return {"pages": out_pages, "facts": facts, "headings": headings, "page_text": page_text,
             "total_pages": n, "title": title, "css": PDF_CSS}
+
+
+def cover_name(texts: list[str]) -> str:
+    """The registrant's name on an SEC cover page: the line above "(Exact name of registrant as specified in its charter)"."""
+    for txt in texts:
+        lines = [ln.strip() for ln in re.split(r"[\r\n]+", txt) if ln.strip()]
+        for i, ln in enumerate(lines):
+            if re.search(r"exact name of (the )?registrants?", ln, re.I) and i > 0:
+                # the nearest line above that reads like a name (not "Commission File Number", "____", a date…)
+                for name in reversed(lines[max(0, i - 4):i]):
+                    name = re.sub(r"[_\s]+", " ", name).strip(" ,:")
+                    if not re.search(r"(\b\w{1,4}|\.\w+)\.$", name):
+                        name = name.rstrip(".")                # a sentence's full stop, not "Inc." / "Corp." / "N.V."
+                    if re.search(r"commission|file number|transition period|registrant|incorporation|identification|^\(?\d|^form\b|"
+                                 r"securities|exchange act|fiscal year|quarterly period", name, re.I):
+                        continue
+                    if 3 <= len(name) <= 90 and sum(c.isalpha() for c in name) >= 3:
+                        return name.title() if name.isupper() else name
+                    break
+    return ""
+
+
+COMPANY_LINE = re.compile(r"^([A-Z][A-Za-z&.,'’ -]{1,60}?\s(Inc\.?|Incorporated|Corporation|Corp\.?|Company|Co\.|plc|PLC|N\.V\.|S\.p\.A\.|SpA|"
+                          r"AG|SE|S\.A\.|SA|Ltd\.?|Limited|LLC|L\.P\.|Group|Holdings?))(?![A-Za-z])")
+
+
+def company_line(texts: list[str]) -> str:
+    """A company name standing on its own line near the top ("Intel Corporation", "Amcor plc")."""
+    for txt in texts:
+        for ln in [ln.strip() for ln in re.split(r"[\r\n]+", txt) if ln.strip()][:40]:
+            m = COMPANY_LINE.match(ln)
+            if m and len(ln) <= len(m.group(1)) + 40:
+                return m.group(1).strip(" ,")
+    return ""
+
+
+def clean_title(title: str) -> str:
+    """PDF metadata titles that are not titles: accession numbers, "UNITED STATES", word-processor names."""
+    title = title.strip()
+    m = re.fullmatch(r"form \S+ for (.+?) filed .*", title, re.I)       # EDGAR printouts: "Form 10-Q for FOOT LOCKER INC filed …"
+    if m:
+        name = m.group(1).title() if m.group(1).isupper() else m.group(1)
+        return re.sub(r"\b(INC|CORP|CO)\b\.?$", lambda x: x.group(1).title() + ".", name)
+    if re.fullmatch(r"[\d-]{10,}|untitled|united states|microsoft word.*|document\d*|.*\.(docx?|pdf|htm)|form \S+|exhibit [\d.]+( - [\d./]+)?",
+                    title, re.I):
+        return ""
+    return title
 
 
 def best_pages(texts: list[str], n: int = MAX_PAGES_SHOWN) -> list[int]:
@@ -192,6 +242,8 @@ def _score_text(text: str) -> float:
                 label.append(tok)
         if row_figs and label and statements.match(" ".join(label)):
             score += 2                                     # a financial statement row
+    if statements.STATEMENT_TITLE.search(text[:700]):
+        score += 30                                        # a page titled as a statement
     return score + 0.1 * nfig
 
 
@@ -258,12 +310,25 @@ def _label_figures(words: list[dict]) -> list[dict]:
                 continue
             if amounts >= 2 and re.fullmatch(r"\d{1,2}", wd["t"]):
                 continue
-            if k > 0 and re.fullmatch(r"\d{1,2},?", wd["t"]) and MONTH_END.search(ln[k - 1]["t"]):
+            prev_w = ln[k - 1]["t"] if k > 0 else ""
+            if re.fullmatch(r"\d{1,2},?", wd["t"]) and MONTH_END.search(prev_w):
                 continue                                  # "June 30": a date, not a figure
+            if re.fullmatch(r"(rule|item|items|section|note|notes|page|no\.?|§|form|exhibit|schedule|article|regulation|nota|art\.?)", prev_w, re.I):
+                continue                                  # "Rule 405", "Item 7", "Note 13"
+            if re.fullmatch(r"\d{1,2},", wd["t"]) or (wd["t"].endswith(")") and not wd["t"].startswith("(")):
+                continue                                  # "13," in "Items 13, 14", "13)"
+            next_w = ln[k + 1]["t"] if k + 1 < len(ln) else ""
+            if wd["t"].startswith("(") and not wd["t"].endswith(")") and next_w[:1].isalpha():
+                continue                                  # "(17 CFR 240.14d-2(b))"
             label_words = [w["t"] for w in ln[:k] if not is_figure(w["t"]) and not re.fullmatch(r"[\W\d]+", w["t"])][-9:]
             label = " ".join(label_words)
             if not label and li > 0:
                 label = " ".join(w["t"] for w in lines[li - 1] if not is_figure(w["t"]))[:80]
+            elif label[:1].islower() and li > 0 and not any(is_figure(w["t"]) for w in lines[li - 1]):
+                # a row label wrapped onto two lines: "Effect of exchange" / "rate fluctuations on cash … (6)"
+                head = " ".join(w["t"] for w in lines[li - 1])
+                if len(head) <= 80 and head[:1].isupper():
+                    label = head + " " + label
             v = parse_loose(wd["t"])
             if v is None:
                 continue

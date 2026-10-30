@@ -17,7 +17,7 @@ from .ixbrl import Fact, IxDoc
 METRICS: dict[str, tuple[str, str, str, tuple[str, ...]]] = {
     "revenue": ("Ricavi", "Revenue", "flow", (
         "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax",
-        "SalesRevenueNet", "Revenue", "RevenueFromContractsWithCustomers", "RevenuesNetOfInterestExpense")),
+        "SalesRevenueNet", "Revenue", "RevenueFromContractsWithCustomers", "RevenuesNetOfInterestExpense", "InsuranceRevenue")),
     "cost_of_revenue": ("Costo del venduto", "Cost of revenue", "flow", ("CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfSales")),
     "gross_profit": ("Margine lordo", "Gross profit", "flow", ("GrossProfit",)),
     "rnd": ("Ricerca e sviluppo", "R&D", "flow", ("ResearchAndDevelopmentExpense", "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost")),
@@ -72,6 +72,10 @@ METRICS: dict[str, tuple[str, str, str, tuple[str, ...]]] = {
         "NetCashProvidedByUsedInInvestingActivities", "CashFlowsFromUsedInInvestingActivities")),
     "cff": ("Flusso di cassa da finanziamenti", "Financing cash flow", "flow", (
         "NetCashProvidedByUsedInFinancingActivities", "CashFlowsFromUsedInFinancingActivities")),
+    "fx_effect": ("Effetto cambi sulla cassa", "Exchange-rate effect on cash", "flow", (
+        "EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "EffectOfExchangeRateOnCashAndCashEquivalents",
+        "EffectOfExchangeRateChangesOnCashAndCashEquivalents")),
+    "cash_hfs": ("Cassa in attività destinate alla vendita", "Cash in assets held for sale", "flow", ()),
     "cash_change": ("Variazione della cassa", "Change in cash", "flow", (
         "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect",
         "CashAndCashEquivalentsPeriodIncreaseDecrease", "IncreaseDecreaseInCashAndCashEquivalents",
@@ -171,6 +175,26 @@ def extract(doc: IxDoc) -> dict:
             metrics[key] = {"key": key, "it": it, "en": en, "kind": kind,
                             "cur": _fact_dict(cur, doc.units), "prev": _fact_dict(prev, doc.units) if prev else None}
             break
+    # extension concepts (a bank's "isp:GrossIncome"): recognise the line by the label of its table row
+    from . import statements
+    missing = set(METRICS) - set(metrics)
+    if missing:
+        by_label: dict[str, dict] = {}
+        for f in doc.facts:
+            if f.value is None or f.context not in doc.contexts or doc.contexts[f.context].dimensional or not f.row_label:
+                continue
+            key = statements.match(f.row_label)
+            role = per.role(f)
+            if key in missing and role and (METRICS[key][2] == "stock") == bool(doc.contexts[f.context].instant):
+                by_label.setdefault(key, {}).setdefault(role, []).append(f)
+        for key, roles in by_label.items():
+            cur = _pick(roles.get("cur", []), doc.page_fact_count)
+            if cur is None:
+                continue
+            prev = _pick(roles.get("prev", []), doc.page_fact_count)
+            it, en, kind, _ = METRICS[key]
+            metrics[key] = {"key": key, "it": it, "en": en, "kind": kind,
+                            "cur": _fact_dict(cur, doc.units), "prev": _fact_dict(prev, doc.units) if prev else None}
     currency = next((m["cur"]["unit"] for m in metrics.values() if m["kind"] in ("flow", "stock") and m["cur"]["unit"]), "")
     return {"periods": per, "metrics": metrics, "currency": currency}
 
@@ -199,6 +223,17 @@ def _growth(cur, prev):
     if cur is None or prev in (None, 0):
         return None
     return (cur - prev) / abs(prev)
+
+
+# a bank's or an insurer's operating cash flow moves with deposits, loans and policies: free cash flow means nothing there
+FINANCIAL_HINTS = ("Deposits", "DepositsFromCustomers", "LoansAndAdvancesToCustomers", "InterestRevenueCalculatedUsingEffectiveInterestMethod",
+                   "FeeAndCommissionIncome", "InterestAndDividendIncomeOperating", "LoansAndLeasesReceivableNetReportedAmount",
+                   "InsuranceContractsIssuedThatAreLiabilities", "PolicyholderFunds", "NoninterestIncome")
+
+
+def is_financial(doc: IxDoc) -> bool:
+    names = {f.local for f in doc.facts}
+    return sum(1 for h in FINANCIAL_HINTS if h in names) >= 2
 
 
 def derive(m: dict) -> dict:
@@ -257,17 +292,27 @@ def checks(m: dict) -> list[dict]:
     out = []
     ok = t("quadra", "balances")
 
-    def add(name, lhs, rhs, tol, pages):
+    cur = next((x["cur"].get("unit") for x in m.values() if x.get("cur") and x["cur"].get("unit") and len(x["cur"]["unit"]) == 3), "")
+
+    def add(name, lhs, rhs, tol, pages, between=False, why=None):
+        """between: other lines may sit between the figures (amortisation, equity-method income…); why: (it, en) reason."""
         if lhs is None or rhs is None or (lhs == 0 and rhs == 0):
             return
         diff = abs(lhs - rhs) / max(abs(rhs), abs(lhs), 1e-9)
-        out.append({"name": name, "ok": diff <= tol, "diff_pct": round(diff * 100, 2), "pages": pages,
-                    "detail": ok if diff <= tol else t(f"scarto del {fmt_num(diff * 100, 1)}%", f"off by {fmt_num(diff * 100, 1)}%")})
+        if diff <= tol:
+            detail = ok
+        elif between:
+            it, en = why or ("altre voci tra le due cifre", "other lines sit between the figures")
+            detail = t(f"differenza di {fmt_money(abs(lhs - rhs), cur)}: {it}", f"differs by {fmt_money(abs(lhs - rhs), cur)}: {en}")
+        else:
+            detail = t(f"scarto del {fmt_num(diff * 100, 1)}%", f"off by {fmt_num(diff * 100, 1)}%")
+        out.append({"name": name, "ok": diff <= tol, "diff_pct": round(diff * 100, 2), "pages": pages, "detail": detail})
 
     v = lambda k: _v(m, k)
     rev, cost, gross = v("revenue"), v("cost_of_revenue"), v("gross_profit")
     if None not in (rev, cost, gross):
-        add(t("Margine lordo = ricavi − costo del venduto", "Gross profit = revenue − cost of revenue"), gross, rev - cost, 0.005, _pages(m, "revenue", "gross_profit"))
+        add(t("Margine lordo = ricavi − costo del venduto", "Gross profit = revenue − cost of revenue"), gross, rev - cost, 0.005,
+            _pages(m, "revenue", "gross_profit"), between=True)
     opex, oi = v("opex_total"), v("operating_income")
     if None not in (rev, opex, oi):
         # total operating expenses either include the cost of revenue or come after gross profit
@@ -275,12 +320,14 @@ def checks(m: dict) -> list[dict]:
         if cost is not None and abs(rev - cost - opex - oi) < abs(lhs - oi):
             lhs = rev - cost - opex
         add(t("Ricavi − costi operativi = risultato operativo", "Revenue − operating expenses = operating income"), lhs, oi, 0.01,
-            _pages(m, "revenue", "opex_total", "operating_income"))
+            _pages(m, "revenue", "opex_total", "operating_income"), between=True)
     pre, tax = v("pretax_income"), v("income_tax")
     ni = v("profit_total") if v("profit_total") is not None else v("net_income")
     if None not in (pre, tax, ni):
-        add(t("Risultato ante imposte − imposte = risultato netto", "Pre-tax income − taxes = net income"), pre - tax, ni, 0.02,
-            _pages(m, "pretax_income", "income_tax", "net_income"))
+        # a tax benefit adds to the result: the sign printed varies, so both readings are tried
+        lhs = pre - tax if abs(pre - tax - ni) <= abs(pre + tax - ni) else pre + tax
+        add(t("Risultato ante imposte − imposte = risultato netto", "Pre-tax income − taxes = net income"), lhs, ni, 0.02,
+            _pages(m, "pretax_income", "income_tax", "net_income"), between=True)
     a, l, e, te = v("total_assets"), v("total_liabilities"), v("equity"), v("temp_equity")
     if None not in (a, l, e):
         name = t("Attivo = passivo + privilegiate riscattabili + patrimonio netto", "Assets = liabilities + redeemable preferred + equity") \
@@ -296,9 +343,20 @@ def checks(m: dict) -> list[dict]:
             _pages(m, "eps_diluted", "diluted_shares", "net_income"))
     cfo, cfi, cff, dc = v("cfo"), v("cfi"), v("cff"), v("cash_change")
     if None not in (cfo, cfi, cff, dc):
-        add(t("Flussi operativo + investimenti + finanziamenti ≈ variazione della cassa",
-              "Operating + investing + financing cash flows ≈ change in cash"), cfo + cfi + cff, dc, 0.01,
-            _pages(m, "cfo", "cfi", "cff", "cash_change"))
+        # the change in cash is printed before or after the exchange-rate effect: either way must balance
+        fx = v("fx_effect")
+        lhs = cfo + cfi + cff
+        if fx is not None and abs(lhs + fx - dc) < abs(lhs - dc):
+            lhs += fx
+        hfs = v("cash_hfs")                               # cash moved to (or back from) assets held for sale
+        if hfs is not None and abs(lhs + hfs - dc) < abs(lhs - dc):
+            lhs += hfs
+        # no exchange-rate line read and a gap that is small next to the flows: a line the reader did not find
+        small = fx is None and abs(lhs - dc) <= 0.01 * max(abs(cfo), abs(cfi), abs(cff))
+        add(t("Flussi operativo + investimenti + finanziamenti (+ cambi) ≈ variazione della cassa",
+              "Operating + investing + financing cash flows (+ exchange rates) ≈ change in cash"), lhs, dc, 0.01 if fx is not None else 0.02,
+            _pages(m, "cfo", "cfi", "cff", "cash_change"), between=small,
+            why=("probabilmente effetto cambi o perimetro, voce non letta", "likely exchange-rate or scope effects, a line not read"))
     return out
 
 

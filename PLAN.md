@@ -31,8 +31,19 @@ financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-bas
       *Analyse* or *Download original* (`/api/original`: SEC filing, ESEF report, price history CSV)
 - [x] `launch.py` + `Start Spider Analyst.command` / `.bat` — venv, dependencies, server, Chromium browser
 - [x] Offline tests (`tests/`): synthetic documents, simulated APIs, launcher browser choice
-- [ ] Real-data run (MSFT 10-K, Ferrari ESEF, BTC-USD) on the user's machine: the cloud dev session could not
-      reach sec.gov / filings.xbrl.org / Yahoo.
+- [x] Real documents, read without the AI (the deterministic layer the AI builds on), figures compared with the
+      published ones:
+      - 19 PDFs from FinanceBench (github.com/patronus-ai/financebench): 10-K/10-Q of Adobe, Amazon, AmEx, Best Buy,
+        Boeing, Boston Properties, Foot Locker, JPMorgan, PG&E; earnings releases of Amcor, Costco, Intel, J&J,
+        McDonald's; AMD annual report; two 8-Ks (no statements: no card, no fake figures).
+      - 10 ESEF reports from filings.xbrl.org: Ferrari, LVMH, Moncler, Intesa Sanpaolo, Enel (130 MB), Prysmian,
+        Heineken, Stellantis, Generali, Air Liquide.
+      - The Anthropic S-1 (13.5 MB paged HTML): acceptance test of the bug report, 5/5 checks.
+      Remaining gaps: Boston Properties (an LP/REIT 10-K) has no EPS; Generali tags no EPS; two explained gaps
+      (AMD gross profit: amortisation sits in between; Boeing operating costs); Air Liquide's exchange-rate line is
+      an issuer concept with a French label, shown as an explained gap.
+- [ ] SEC EDGAR live and a real AI provider from the cloud dev session: sec.gov was not reachable and no API key is
+      available there; both are covered by simulated responses in the tests.
 - [ ] Safari / Firefox: not supported (the app shows a notice); only Chromium-based browsers are tested.
 
 ## Data sources

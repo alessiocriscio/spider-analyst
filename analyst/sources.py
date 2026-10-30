@@ -64,7 +64,10 @@ def _cache_path(url: str) -> Path:
     return CACHE / "http" / h[:2] / h
 
 
-def fetch(url: str, *, ttl: Optional[float] = DAY, max_bytes: int = 120_000_000) -> bytes:
+MAX_DOC = 400_000_000          # the largest ESEF reports run past 120 MB, mostly embedded images
+
+
+def fetch(url: str, *, ttl: Optional[float] = DAY, max_bytes: int = MAX_DOC) -> bytes:
     """GET with disk cache. ttl=None caches forever (filed documents never change)."""
     p = _cache_path(url)
     if p.exists() and (ttl is None or time.time() - p.stat().st_mtime < ttl):
@@ -81,15 +84,25 @@ def fetch(url: str, *, ttl: Optional[float] = DAY, max_bytes: int = 120_000_000)
     else:
         headers["User-Agent"] = BROWSER_UA
     try:
-        with client().stream("GET", url, headers=headers) as r:
-            if r.status_code >= 400:
-                raise SourceError(ui(f"{host} ha risposto {r.status_code} per {url}", f"{host} answered {r.status_code} for {url}"))
-            chunks, size = [], 0
-            for c in r.iter_bytes():
-                size += len(c)
-                if size > max_bytes:
-                    raise SourceError(ui(f"Documento troppo grande (> {max_bytes // 1_000_000} MB): {url}", f"Document too large (> {max_bytes // 1_000_000} MB): {url}"))
-                chunks.append(c)
+        for attempt in range(4):
+            with client().stream("GET", url, headers=headers) as r:
+                if r.status_code in (429, 502, 503) and attempt < 3:
+                    # busy or rate-limited (filings.xbrl.org, SEC): wait as asked, then try again
+                    try:
+                        wait = min(20.0, float(r.headers.get("retry-after") or 0)) or 1.5 * 2 ** attempt
+                    except ValueError:
+                        wait = 1.5 * 2 ** attempt
+                    time.sleep(wait)
+                    continue
+                if r.status_code >= 400:
+                    raise SourceError(ui(f"{host} ha risposto {r.status_code} per {url}", f"{host} answered {r.status_code} for {url}"))
+                chunks, size = [], 0
+                for c in r.iter_bytes():
+                    size += len(c)
+                    if size > max_bytes:
+                        raise SourceError(ui(f"Documento troppo grande (> {max_bytes // 1_000_000} MB): {url}", f"Document too large (> {max_bytes // 1_000_000} MB): {url}"))
+                    chunks.append(c)
+                break
     except httpx.HTTPError as e:
         if p.exists():                                  # offline: stale cache is better than nothing
             return p.read_bytes()

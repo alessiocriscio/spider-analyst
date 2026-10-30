@@ -281,6 +281,15 @@ def period_label(months: Optional[int], end: Optional[date], lang: str) -> str:
     return f"{months}M to {mon} {end.year}" if lang == "en" else f"{months} mesi al {mon_it} {end.year}"
 
 
+def _kind(t: Table) -> str:
+    """Which statement a table is, from the lines it holds."""
+    if {"cfo", "cfi", "cff", "cash_change"} & t.keys:
+        return "cf"
+    if {"total_assets", "total_liabilities", "current_assets"} & t.keys:
+        return "bs"
+    return "is" if {"revenue", "net_income", "operating_income", "eps_diluted"} & t.keys else ""
+
+
 def _year_before(a: date, b: date) -> bool:
     return 350 <= (a - b).days <= 380
 
@@ -310,7 +319,7 @@ def extract(tables: list[Table], lang: str) -> dict:
                 scale = 1.0 if kind == "ps" or (kind == "shares" and not t.shares_scaled) else \
                     (t.shares_scale or t.scale) if kind == "shares" else t.scale
                 v = abs(cl.value) if key in ABS_KEYS else cl.value
-                obs.setdefault(key, []).append({"ti": ti, "months": col.months, "end": col.end, "value": v * scale,
+                obs.setdefault(key, []).append({"ti": ti, "key": key, "months": col.months, "end": col.end, "value": v * scale,
                                                 "display": cl.text, "page": t.page, "el": cl.el})
             seen.add(key)
     if not obs:
@@ -345,7 +354,8 @@ def extract(tables: list[Table], lang: str) -> dict:
         # same value printed in the summary, MD&A and statements: cite the table that also holds the comparative
         # period, then the one with most statement lines
         both = {o["ti"] for o in os_ if other and o["months"] == other[0] and abs((o["end"] - other[1]).days) <= 5}
-        return max(hit, key=lambda o: (o["ti"] in both, len(tables[o["ti"]].keys), -o["page"]))
+        return max(hit, key=lambda o: (o["ti"] in both, _kind(tables[o["ti"]]) == statements.statement_of(o["key"]),
+                                       len(tables[o["ti"]].keys), -o["page"]))
 
     metrics, series = {}, {}
     for key, os_ in obs.items():
