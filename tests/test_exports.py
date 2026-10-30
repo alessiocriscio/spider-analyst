@@ -121,3 +121,20 @@ def test_export_routes(no_ai):
     assert r.status_code == 200 and r.content[:2] == b"PK" and "spreadsheetml" in r.headers["content-type"]
     assert client.get(f"/api/doc/{a['id']}/report.docx").status_code == 404
     assert client.get("/api/doc/nope/report.pptx").status_code == 404
+
+
+def test_tagged_quarter_is_named_as_the_issuer_names_it(no_ai):
+    """A 10-Q whose fiscal year ends in June: the quarter to March is Q3 FY2025 (dei tags), not "Q1"."""
+    html = (HERE / "fixtures" / "sec_10k.htm").read_text()
+    html = (html.replace('contextRef="FY25">10-K</ix:nonNumeric>',
+                         'contextRef="FY25">10-Q</ix:nonNumeric><ix:nonNumeric name="dei:DocumentFiscalPeriodFocus" contextRef="FY25">Q3</ix:nonNumeric>'
+                         '<ix:nonNumeric name="dei:DocumentFiscalYearFocus" contextRef="FY25">2025</ix:nonNumeric>')
+            .replace("<xbrli:startDate>2024-07-01</xbrli:startDate><xbrli:endDate>2025-06-30</xbrli:endDate>",
+                     "<xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-03-31</xbrli:endDate>")
+            .replace("<xbrli:startDate>2023-07-01</xbrli:startDate><xbrli:endDate>2024-06-30</xbrli:endDate>",
+                     "<xbrli:startDate>2024-01-01</xbrli:startDate><xbrli:endDate>2024-03-31</xbrli:endDate>"))
+    a = pipeline.run({"kind": "upload", "data": html.encode(), "name": "q.htm", "lang": "en"}, lambda *_: None)
+    card = {c["key"]: c for c in a["card"]}
+    assert card["revenue"]["vs"] == "Q3 FY2024"
+    a = pipeline.run({"kind": "upload", "data": html.encode(), "name": "q.htm", "lang": "it"}, lambda *_: None)
+    assert {c["key"]: c for c in a["card"]}["revenue"]["vs"] == "3° trim. es. 2024"

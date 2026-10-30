@@ -20,6 +20,7 @@ from typing import Optional
 from urllib.parse import quote, urlencode
 
 import httpx
+from lxml import html as lxml_html
 
 from .i18n import system_lang, ui
 
@@ -30,6 +31,8 @@ DEFAULT_SEC_UA = "SpiderAnalyst/1.0 (local research tool; spider-analyst@example
 BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 SEC_FORMS = ("10-K", "10-K/A", "20-F", "40-F", "10-Q", "S-1", "S-1/A", "F-1", "F-1/A", "424B4", "424B1")
 REG_FORMS = ("424B4", "424B1", "S-1/A", "S-1", "F-1/A", "F-1")        # IPO prospectuses and registration statements
+# the documents a user can pick: annual and quarterly reports, results releases (8-K item 2.02), prospectuses
+DOC_FORMS = ("10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "20-F/A", "40-F", "8-K") + REG_FORMS
 DAY = 86400
 
 
@@ -208,6 +211,7 @@ def sec_filings(cik: int, forms=SEC_FORMS) -> list[dict]:
         out.append({
             "source": "sec",
             "form": form,
+            "items": (rec.get("items") or [""] * (i + 1))[i] or "",
             "filed": rec["filingDate"][i],
             "period": rec.get("reportDate", [""] * (i + 1))[i],
             "ixbrl": bool(rec.get("isInlineXBRL", [0] * (i + 1))[i]),
@@ -233,6 +237,49 @@ def sec_latest(query: str, form: Optional[str] = None) -> dict:
         raise SourceError(ui(f"Nessun bilancio annuale o prospetto disponibile su EDGAR per {c.get('name') or query}.",
                               f"No annual report or prospectus available on EDGAR for {c.get('name') or query}."))
     return filings[0]
+
+
+def _sec_what(form: str) -> str:
+    base = form.split("/")[0]
+    amended = ui(" (modifica)", " (amendment)") if form.endswith("/A") else ""
+    what = {"10-K": ui("Bilancio annuale", "Annual report"), "20-F": ui("Bilancio annuale", "Annual report"),
+            "40-F": ui("Bilancio annuale", "Annual report"), "10-Q": ui("Relazione trimestrale", "Quarterly report"),
+            "8-K": ui("Comunicato sui risultati", "Results release")}.get(base) or ui("Prospetto", "Prospectus")
+    return what + amended
+
+
+def sec_documents(query: str, limit: int = 40) -> dict:
+    """The company's filings to choose from, newest first; 8-Ks only when they announce results (item 2.02)."""
+    c = sec_lookup(query)
+    if not c:
+        raise SourceError(ui(f"Nessuna società SEC trovata per «{query}».", f"No SEC company found for \"{query}\"."))
+    docs = [f for f in sec_filings(c["cik"], DOC_FORMS) if f["form"] != "8-K" or "2.02" in f["items"].split(",")]
+    for f in docs:
+        f["what"] = _sec_what(f["form"])
+    return {"company": (docs[0]["company"] if docs else "") or c.get("name", ""), "documents": docs[:limit]}
+
+
+SEC_DOC_URL = re.compile(r"^https://www\.sec\.gov/Archives/edgar/data/(\d+)/(\d{18})/[\w.-]+$")
+
+
+def sec_release(url: str) -> str:
+    """An 8-K's results release is its exhibit 99.1, listed in the filing index next to the cover document."""
+    m = SEC_DOC_URL.match(url)
+    if not m:
+        return url
+    cik, acc = m.group(1), m.group(2)
+    index = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{acc[:10]}-{acc[10:12]}-{acc[12:]}-index.htm"
+    root = lxml_html.fromstring(fetch(index, ttl=None))
+    rows = []
+    for tr in root.iter("tr"):
+        cells = [c for c in tr if isinstance(c.tag, str) and c.tag in ("td", "th")]
+        link = tr.find(".//a[@href]")
+        if len(cells) >= 4 and link is not None:
+            rows.append(("".join(cells[3].itertext()).strip().upper(), link.get("href").replace("/ix?doc=", "")))
+    best = next((h for typ, h in rows if typ == "EX-99.1"), None) or next((h for typ, h in rows if typ.startswith("EX-99")), None)
+    if not best or not best.lower().endswith((".htm", ".html", ".pdf", ".txt")):
+        raise SourceError(ui("Questo 8-K non contiene un comunicato sui risultati (allegato 99).", "This 8-K has no results release (exhibit 99)."))
+    return best if best.startswith("http") else "https://www.sec.gov" + best
 
 
 # ---------------------------------------------------------------- ESEF (filings.xbrl.org)
@@ -279,6 +326,27 @@ def esef_filings(lei: str) -> list[dict]:
         })
     out.sort(key=lambda x: (x["period"], x["filed"]), reverse=True)
     return out
+
+
+def esef_documents(query: str) -> dict:
+    """Every report filings.xbrl.org has for the issuer (one per period and language), newest first."""
+    ents = esef_entities(query)
+    if not ents:
+        raise SourceError(ui(f"Nessun emittente ESEF trovato per «{query}» su filings.xbrl.org.", f"No ESEF issuer found for \"{query}\" on filings.xbrl.org."))
+    ent = ents[0]
+    seen, docs = set(), []
+    for f in esef_filings(ent["lei"]):
+        key = (f["period"], f["lang"])
+        if key in seen:
+            continue
+        seen.add(key)
+        year = f["period"][:4]
+        f.update(company=ent["name"], what=ui(f"Relazione finanziaria annuale {year}", f"Annual financial report {year}"))
+        docs.append(f)
+    return {"company": ent["name"], "documents": docs}
+
+
+ESEF_DOC_URL = re.compile(r"^https://filings\.xbrl\.org/[\w./%-]+$")
 
 
 def esef_latest(query: str) -> dict:

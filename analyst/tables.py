@@ -276,8 +276,7 @@ def period_label(months: Optional[int], end: Optional[date], lang: str) -> str:
             (f"FY{end.year}" if end.month == 12 else f"FY to {mon} {end.year}")
     if months == 6 and end.month in (6, 12):
         return f"{'H1' if end.month == 6 else 'H2'} {end.year}" if lang == "en" else f"{'1° sem.' if end.month == 6 else '2° sem.'} {end.year}"
-    if months == 3 and end.month in (3, 6, 9, 12):
-        return f"Q{end.month // 3} {end.year}" if lang == "en" else f"{end.month // 3}° trim. {end.year}"
+    # a quarter is not named "Q2" here: a fiscal year may not follow the calendar (Apple's Q3 ends in June)
     return f"{months}M to {mon} {end.year}" if lang == "en" else f"{months} mesi al {mon_it} {end.year}"
 
 

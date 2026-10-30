@@ -141,6 +141,25 @@ def search(q: str):
     return out
 
 
+@app.get("/api/documents")
+def documents(kind: str, query: str):
+    """The documents of a search result to choose from: SEC filings (annual, quarterly, results, prospectuses) or ESEF years."""
+    if kind not in ("sec", "esef") or not query.strip():
+        raise HTTPException(400, ui("richiesta non valida", "invalid request"))
+    try:
+        return sources.sec_documents(query.strip()[:80]) if kind == "sec" else sources.esef_documents(query.strip()[:80])
+    except sources.SourceError as e:
+        raise HTTPException(502, str(e))
+
+
+def _doc_url(kind: str, url: str) -> str:
+    """A document chosen from a list: only SEC EDGAR archives and filings.xbrl.org reports."""
+    ok = sources.SEC_DOC_URL.match(url) if kind == "sec" else sources.ESEF_DOC_URL.match(url) if kind == "esef" else None
+    if not ok:
+        raise HTTPException(400, ui("indirizzo del documento non valido", "invalid document address"))
+    return url
+
+
 # ---------------------------------------------------------------- jobs
 
 def _start(req: dict) -> str:
@@ -172,6 +191,8 @@ async def analyze(request: Request):
         raise HTTPException(400, ui("tipo di richiesta non valido", "invalid request type"))
     _need_ai()
     req = {k: body[k] for k in ("kind", "query", "symbol", "url", "form", "refresh", "lang") if k in body}
+    if kind in ("sec", "esef") and req.get("url"):
+        _doc_url(kind, str(req["url"]))
     return {"job": _start({**req, "ai": True})}
 
 
@@ -260,17 +281,21 @@ def export(aid: str, what: str, theme: str = "neon"):
 
 
 @app.get("/api/original")
-def original(kind: str, query: str = "", symbol: str = ""):
+def original(kind: str, query: str = "", symbol: str = "", url: str = "", form: str = ""):
     """The original document behind a search result: the SEC filing, the ESEF report, or the price history as CSV."""
     try:
+        if kind in ("sec", "esef") and url:
+            _doc_url(kind, url)
         if kind == "sec":
-            f = sources.sec_latest(query)
+            f = sources.sec_latest(query) if not url else {"url": url, "form": form, "ticker": query}
+            if f.get("form") == "8-K":
+                f["url"] = sources.sec_release(f["url"])
             data = sources.fetch(f["url"], ttl=None)
             ext = f["url"].rsplit(".", 1)[-1].lower() if "." in f["url"].rsplit("/", 1)[-1] else "htm"
-            name = f"{f.get('ticker') or query}-{f.get('form', 'filing')}-{f.get('period') or f.get('filed', '')}.{ext}"
+            name = f"{query}-{f['url'].rsplit('/', 1)[-1]}" if url else f"{f.get('ticker') or query}-{f.get('form', 'filing')}-{f.get('period') or f.get('filed', '')}.{ext}"
             media = "text/html" if ext in ("htm", "html") else "application/octet-stream"
         elif kind == "esef":
-            f = sources.esef_latest(query)
+            f = sources.esef_latest(query) if not url else {"url": url}
             data = sources.fetch(f["url"], ttl=None)
             fname = f["url"].rsplit("/", 1)[-1] or "report.xhtml"
             name, media = fname, "application/xhtml+xml" if fname.endswith(("xhtml", "html")) else "application/octet-stream"

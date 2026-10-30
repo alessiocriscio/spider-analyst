@@ -147,3 +147,84 @@ def test_pre_ipo_company_and_prospectus(tmp_path, monkeypatch):
     assert hits == [{"cik": 2000001, "ticker": "", "name": "Lumen Labs, Inc.", "form": "S-1/A", "filed": "2026-09-30"}]
     f = sources.sec_latest("2000001")
     assert f["form"] == "S-1/A" and f["url"].endswith("/000200000126000009/lumen-s1a.htm")
+
+
+def test_document_picker_sec_and_esef(tmp_path, monkeypatch):
+    """Quarterly reports, results releases (8-K item 2.02 → exhibit 99.1) and earlier ESEF years, chosen from a list."""
+    subs = {"cik": "0000320193", "name": "Apple Inc.", "tickers": ["AAPL"], "filings": {"recent": {
+        "accessionNumber": ["0000320193-26-000020", "0000320193-26-000018", "0001140361-26-015711", "0000320193-25-000079"],
+        "filingDate": ["2026-07-31", "2026-07-30", "2026-04-20", "2025-10-31"], "reportDate": ["2026-06-27", "2026-07-30", "2026-04-17", "2025-09-27"],
+        "form": ["10-Q", "8-K", "8-K", "10-K"], "items": ["", "2.02,9.01", "5.02", ""],
+        "primaryDocument": ["aapl-20260627.htm", "aapl-20260730.htm", "ef2007_8k.htm", "aapl-20250927.htm"], "isInlineXBRL": [1, 1, 0, 1]}}}
+    index = """<html><body><table class="tableFile" summary="Document Format Files">
+      <tr><th scope="col">Seq</th><th scope="col">Description</th><th scope="col">Document</th><th scope="col">Type</th><th scope="col">Size</th></tr>
+      <tr><td scope="row">1</td><td scope="row">8-K</td><td scope="row"><a href="/ix?doc=/Archives/edgar/data/320193/000032019326000018/aapl-20260730.htm">aapl-20260730.htm</a></td><td scope="row">8-K</td><td>37066</td></tr>
+      <tr class="blueRow"><td scope="row">2</td><td scope="row">EX-99.1</td><td scope="row"><a href="/Archives/edgar/data/320193/000032019326000018/a8-kex991q3.htm">a8-kex991q3.htm</a></td><td scope="row">EX-99.1</td><td>9123</td></tr>
+    </table></body></html>"""
+    release = """<html><body><h1>Apple reports third quarter results</h1><p>CONDENSED CONSOLIDATED STATEMENTS OF OPERATIONS</p>
+      <p>(in millions, except per-share amounts)</p><table>
+      <tr><td></td><td>Three Months Ended June 27, 2026</td><td>Three Months Ended June 28, 2025</td></tr>
+      <tr><td>Total net sales</td><td>$ 98,000</td><td>$ 94,036</td></tr><tr><td>Total cost of sales</td><td>52,000</td><td>50,318</td></tr>
+      <tr><td>Gross margin</td><td>46,000</td><td>43,718</td></tr><tr><td>Operating income</td><td>31,000</td><td>28,202</td></tr>
+      <tr><td>Income before provision for income taxes</td><td>31,200</td><td>28,031</td></tr>
+      <tr><td>Provision for income taxes</td><td>6,200</td><td>4,597</td></tr><tr><td>Net income</td><td>$ 25,000</td><td>$ 23,434</td></tr>
+      <tr><td>Diluted</td><td>$ 1.68</td><td>$ 1.57</td></tr></table></body></html>"""
+    filings = {"data": [
+        {"type": "filing", "id": str(i), "attributes": {"period_end": p, "date_added": d, "report_url": f"/549300ZTFBTXS1XOSZ93/{p}/ESEF/NL/0/f-{p[:4]}{s}.xhtml",
+                                                         "error_count": 0, "language": "en"}}
+        for i, (p, d, s) in enumerate([("2025-12-31", "2026-03-01 10:00:00", ""), ("2025-12-31", "2026-02-20 10:00:00", "-old"),
+                                       ("2024-12-31", "2025-03-01 10:00:00", "")])]}
+    calls = []
+
+    def handler(req: httpx.Request):
+        u = str(req.url)
+        calls.append(u)
+        if u == "https://www.sec.gov/files/company_tickers.json":
+            return httpx.Response(200, json={"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}})
+        if u.startswith("https://data.sec.gov/submissions/CIK0000320193.json"):
+            return httpx.Response(200, json=subs)
+        if u == "https://www.sec.gov/Archives/edgar/data/320193/000032019326000018/0000320193-26-000018-index.htm":
+            return httpx.Response(200, text=index)
+        if u == "https://www.sec.gov/Archives/edgar/data/320193/000032019326000018/a8-kex991q3.htm":
+            return httpx.Response(200, text=release)
+        if u.startswith("https://filings.xbrl.org/api/entities?"):
+            return httpx.Response(200, json=ESEF_ENTITIES)
+        if u.startswith("https://filings.xbrl.org/api/entities/549300ZTFBTXS1XOSZ93/filings"):
+            return httpx.Response(200, json=filings)
+        return httpx.Response(404)
+
+    monkeypatch.setattr(sources, "CACHE", tmp_path)
+    monkeypatch.setattr(sources, "_client", httpx.Client(transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr(sources.time, "sleep", lambda s: None)
+    monkeypatch.setattr(pipeline, "DOCS", tmp_path / "docs")
+    from analyst import ai
+    monkeypatch.setattr(ai, "active", lambda: None)
+
+    res = sources.sec_documents("AAPL")
+    assert res["company"] == "Apple Inc."
+    assert [(d["form"], d["what"]) for d in res["documents"]] == [
+        ("10-Q", "Quarterly report"), ("8-K", "Results release"), ("10-K", "Annual report")]   # the 8-K about a director is left out
+    eight_k = res["documents"][1]["url"]
+    assert sources.sec_release(eight_k) == "https://www.sec.gov/Archives/edgar/data/320193/000032019326000018/a8-kex991q3.htm"
+
+    a = pipeline.run({"kind": "sec", "query": "AAPL", "url": eight_k, "form": "8-K", "lang": "en"}, lambda *_: None)
+    card = {c["key"]: c for c in a["card"]}
+    assert card["revenue"]["display"] == "$98.0B" and card["revenue"]["yoy_display"] == "+4.2%"
+    assert card["revenue"]["vs"] == "3M to Jun 2025"            # Apple's third fiscal quarter: not called "Q2"
+
+    esef = sources.esef_documents("549300ZTFBTXS1XOSZ93")
+    assert [d["period"] for d in esef["documents"]] == ["2025-12-31", "2024-12-31"]          # one per year and language
+    assert esef["documents"][0]["url"].endswith("f-2025.xhtml") and esef["documents"][1]["what"] == "Annual financial report 2024"
+
+    import server
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(server, "_need_ai", lambda: None)
+    client = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    r = client.get("/api/documents", params={"kind": "sec", "query": "AAPL"})
+    assert r.status_code == 200 and len(r.json()["documents"]) == 3
+    assert client.get("/api/documents", params={"kind": "market", "query": "x"}).status_code == 400
+    # a chosen document must come from the archive it was listed from
+    assert client.post("/api/analyze", json={"kind": "sec", "query": "AAPL", "url": "https://evil.example/x.htm"}).status_code == 400
+    assert client.post("/api/analyze", json={"kind": "esef", "query": "x", "url": "https://www.sec.gov/Archives/edgar/data/1/000000000000000001/a.htm"}).status_code == 400
+    r = client.get("/api/original", params={"kind": "sec", "query": "AAPL", "url": eight_k, "form": "8-K"})
+    assert r.status_code == 200 and b"third quarter" in r.content and "a8-kex991q3.htm" in r.headers["content-disposition"]

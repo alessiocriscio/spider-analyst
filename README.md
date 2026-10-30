@@ -45,11 +45,14 @@ Close the terminal window (or press Ctrl+C) to stop it.
 
 | You look for | The document the spider reads | Source |
 |---|---|---|
-| US-listed companies (MSFT, NVDA, …) | Latest 10-K, 20-F or 40-F in inline XBRL | SEC EDGAR |
+| US-listed companies (MSFT, NVDA, …) | Latest 10-K, 20-F or 40-F in inline XBRL; under *Other documents* the quarterly reports (10-Q), results releases (8-K item 2.02, read from exhibit 99.1), prospectuses and earlier years | SEC EDGAR |
 | Companies before an IPO (no ticker yet) | Latest S-1, F-1 or 424B prospectus (tagged or not) | SEC EDGAR full-text search |
-| European companies (Ferrari, ENI, …) | ESEF annual report in inline XBRL | filings.xbrl.org |
+| European companies (Ferrari, ENI, …) | ESEF annual report in inline XBRL; earlier years under *Other documents* | filings.xbrl.org |
 | Crypto, indices, currencies, commodities, ETFs, funds (BTC-USD, ^GSPC, EURUSD=X, GC=F, …) | A generated market sheet: chart, calendar-year and monthly returns, volatility, drawdowns | Yahoo Finance (Coinbase as fallback for crypto) |
 | Any other document, in English or Italian: annual report or statements as PDF/HTML, KID, prospectus, factsheet, whitepaper | The file you upload (*Upload a document*) or the URL you paste | Your file / URL |
+
+**Not in the search** (the home page says so too): Italian half-year reports and other documents not filed in ESEF, accounts of
+unlisted companies (business register), fund KIDs and factsheets — upload the PDF or paste its address.
 
 Companies without a ticker are found through EDGAR full-text search among the filers of prospectuses and annual
 reports. Each search result offers two actions: **Analyse** (the spider reads it) or **Download original** — the filing as
@@ -103,7 +106,10 @@ In untagged PDF/HTML the figures are the ones printed on the page:
   liquidity, leverage — deterministic calculations on the document's figures.
 - **Language**: Italian or English, chosen on the home page or while reading (the report is regenerated:
   findings, checks, labels, number formats — `$120B` / `$120 mld`).
-- **Download**: *Download report (PDF)* downloads a PDF in the app's style and colour theme, drawn by the local server
+- **Download** (menu in the reading view): *Report (PDF)*; *Slides (PowerPoint)* — a 16:9 deck with native, editable charts,
+  every slide citing the printed pages and the source; *Figures (Excel)* — statements as numbers with unit and page, changes
+  and free cash flow as formulas, ratios, checks, every figure read (prices and returns for market sheets).
+  The PDF is drawn in the app's style and colour theme by the local server
   in a fraction of a second (no browser involved). No pages of raw figures: it holds
   - the summary card, the AI's summary and the key findings;
   - **financial highlights**: income statement, balance sheet and cash flows with the two periods compared, the change

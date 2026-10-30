@@ -117,6 +117,10 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
         months = min((12, 9, 6, 3), key=lambda mth: abs((per.days or 365) - mth * 30.44))
         prev_end = _date(per.end.year - 1, per.end.month, min(per.end.day, _cal.monthrange(per.end.year - 1, per.end.month)[1]))
         y_cur, y_prev = tables.period_label(months, per.end, lang()), tables.period_label(months, prev_end, lang())
+        fq, fy = str(doc.info.get("DocumentFiscalPeriodFocus") or "").upper(), str(doc.info.get("DocumentFiscalYearFocus") or "")
+        if months == 3 and re.fullmatch(r"Q[1-4]", fq) and re.fullmatch(r"\d{4}", fy):
+            # the issuer's own name for the quarter (dei tags): "Q3 FY2026" against "Q3 FY2025"
+            y_cur, y_prev = (t(f"{fq[1]}° trim. es. {int(fy) - k}", f"{fq} FY{int(fy) - k}") for k in (0, 1))
     finds = F.findings(m, d, cur, period=y_cur, vs=y_prev)
     card = F.card(m, d, cur, vs=y_prev)
 
@@ -571,6 +575,8 @@ def _run(req: dict, data: Optional[bytes], lang: str, progress: Progress) -> dic
     if kind == "sec":
         progress(ui("Cerco il bilancio su SEC EDGAR", "Looking for the filing on SEC EDGAR"), 0.08)
         f = sources.sec_latest(req["query"], req.get("form")) if not req.get("url") else {"url": req["url"], "form": req.get("form", "")}
+        if f.get("form") == "8-K":
+            f["url"] = sources.sec_release(f["url"])          # the results release (exhibit 99.1), not the cover page
         aid = _id("sec", f["url"], use_ai, lang)
         if (hit := load(aid)) and not req.get("refresh"):
             return hit

@@ -51,18 +51,22 @@ printed pages on every chart slide; workbook formulas carry cached results (Libr
 
 ### 2. Search coverage: pick the document, say what is covered
 
-- [ ] `sources.sec_documents(query)`: the company's recent filings to choose from — 10-K, 10-Q, 20-F, 40-F, 6-K,
+- [x] `sources.sec_documents(query)`: the company's recent filings to choose from — 10-K, 10-Q, 20-F, 40-F, 6-K,
       S-1/F-1/424B, and 8-K with Item 2.02 (results), whose earnings release is exhibit 99.1 (resolved from the
       filing index).
-- [ ] `sources.esef_documents(query)`: every year filings.xbrl.org has for the issuer, not only the latest.
-- [ ] `GET /api/documents?kind=sec|esef&query=` and analyse / download a chosen document (`url` restricted to
+- [x] `sources.esef_documents(query)`: every year filings.xbrl.org has for the issuer, not only the latest.
+- [x] `GET /api/documents?kind=sec|esef&query=` and analyse / download a chosen document (`url` restricted to
       sec.gov and filings.xbrl.org).
-- [ ] UI: each search result gets a document picker (latest annual report preselected).
-- [ ] Coverage stated in the UI and README: covered (SEC filings, EU ESEF annual reports), not covered (Italian
+- [x] UI: each search result gets a document picker (latest annual report preselected).
+- [x] Coverage stated in the UI and README: covered (SEC filings, EU ESEF annual reports), not covered (Italian
       half-year reports and non-ESEF documents, unlisted companies' filings at the business register, fund KIDs):
       upload the PDF or paste its URL.
-- [ ] Tests with simulated EDGAR / filings.xbrl.org responses; live check on SEC (reachable from the dev session
-      since 2026-10-30).
+- [x] Tests with simulated EDGAR / filings.xbrl.org responses (`tests/test_sources.py::test_document_picker_sec_and_esef`).
+      Live: data.sec.gov (submissions) is reachable from the dev session, www.sec.gov (documents) is not.
+
+Also fixed: dei facts in `ix:hidden` (DocumentType, fiscal period) were dropped with the header; 3-month periods are
+no longer called "Q2" from the calendar (Apple's fiscal Q3 ends in June): "3M to Jun 2026", or the issuer's
+"Q3 FY2026" from the dei tags.
 
 ### 3. More real documents
 

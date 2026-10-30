@@ -440,9 +440,17 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
     contexts, units = _contexts_units(root)
     warnings: list[str] = []
 
-    # header holds contexts/units and hidden facts: read, then drop
+    # header holds contexts/units and hidden facts: read, then drop (SEC filings keep DocumentType and the
+    # fiscal period there: "10-Q", "Q3", "2026")
+    hidden_info: dict[str, str] = {}
     for el in list(root.iter()):
         if isinstance(el.tag, str) and _prefix(el.tag) == "ix" and _local(el.tag).lower() == "header":
+            for nn in el.iter():
+                if isinstance(nn.tag, str) and _local(nn.tag).lower() == "nonnumeric":
+                    key = (nn.get("name") or "").split(":")[-1]
+                    val = _text(nn)
+                    if key in DEI_KEYS and key not in hidden_info and val and len(val) <= 200:
+                        hidden_info[key] = val
             el.getparent().remove(el)
 
     title_el = next((e for e in root.iter() if isinstance(e.tag, str) and _local(e.tag).lower() == "title"), None)
@@ -487,6 +495,9 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
                 if t and len(t) <= 200:
                     info[key] = t
                     info_ctx[key] = el.get("contextRef") or el.get("contextref") or ""
+
+    for key, val in hidden_info.items():
+        info.setdefault(key, val)
 
     # rename every element to a plain HTML tag
     for el in root.iter():

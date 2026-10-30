@@ -30,7 +30,9 @@ const UI = {
     sec_noticker: (f) => `${f || "Filing"} · no ticker yet`,
     error: (m) => `Something went wrong: ${m} — reload the page (Cmd+R / Ctrl+R). If it happens again, send this message.`,
     searching: (q) => `Searching for “${q}” on SEC EDGAR, filings.xbrl.org and Yahoo Finance…`,
-    g_sec: "US filings", g_sec_src: "SEC EDGAR: latest 10-K, 20-F or 40-F, or the IPO prospectus (S-1, F-1)", read_filing: "Analyse",
+    g_sec: "US filings", g_sec_src: "SEC EDGAR: the latest annual report, or the IPO prospectus; quarterly reports and results under «Other documents»", read_filing: "Analyse",
+    more_docs: "Other documents ▾", docs_loading: "Loading the list…", no_docs: "No other documents.", doc_period: (p) => `period ${p}`, doc_filed: (d) => `filed ${d}`,
+    coverage: "<b>What the search finds</b>: US companies on SEC EDGAR — annual (10-K, 20-F, 40-F) and quarterly (10-Q) reports, results releases (8-K), IPO prospectuses (S-1, F-1); annual reports of European listed companies (ESEF); prices of stocks, indices, currencies, commodities and crypto. <b>Not in the search</b>: Italian half-year reports and other non-ESEF documents, accounts of unlisted companies, fund KIDs and factsheets — upload the PDF or paste its address below.",
     g_esef: "European annual report", g_esef_src: "ESEF from filings.xbrl.org", read_report: "Analyse",
     g_market: "Markets", g_market_src: "Sheet generated from the Yahoo Finance price history",
     orig: "Download original", orig_csv: "Download prices (CSV)", orig_busy: "Downloading…", orig_failed: "Download failed:",
@@ -63,7 +65,9 @@ const UI = {
     sec_noticker: (f) => `${f || "Documento"} · ancora senza ticker`,
     error: (m) => `Qualcosa non ha funzionato: ${m} — ricarica la pagina (Cmd+R / Ctrl+R). Se si ripete, manda questo messaggio.`,
     searching: (q) => `Cerco «${q}» su SEC EDGAR, filings.xbrl.org e Yahoo Finance…`,
-    g_sec: "Documenti SEC (USA)", g_sec_src: "SEC EDGAR: 10-K, 20-F o 40-F più recente, o il prospetto di IPO (S-1, F-1)", read_filing: "Analizza",
+    g_sec: "Documenti SEC (USA)", g_sec_src: "SEC EDGAR: l'ultimo bilancio annuale, o il prospetto di IPO; trimestrali e risultati in «Altri documenti»", read_filing: "Analizza",
+    more_docs: "Altri documenti ▾", docs_loading: "Carico l'elenco…", no_docs: "Nessun altro documento.", doc_period: (p) => `periodo ${p}`, doc_filed: (d) => `depositato ${d}`,
+    coverage: "<b>Cosa trova la ricerca</b>: società USA su SEC EDGAR — bilanci annuali (10-K, 20-F, 40-F) e trimestrali (10-Q), comunicati sui risultati (8-K), prospetti di IPO (S-1, F-1); relazioni annuali delle quotate europee (ESEF); prezzi di azioni, indici, valute, materie prime e crypto. <b>Non nella ricerca</b>: semestrali italiane e altri documenti non ESEF, bilanci di società non quotate, KID e factsheet dei fondi — carica il PDF o incolla il suo indirizzo qui sotto.",
     g_esef: "Relazione annuale europea", g_esef_src: "ESEF da filings.xbrl.org", read_report: "Analizza",
     g_market: "Mercati", g_market_src: "Scheda generata dallo storico prezzi Yahoo Finance",
     orig: "Scarica originale", orig_csv: "Scarica prezzi (CSV)", orig_busy: "Scarico…", orig_failed: "Download non riuscito:",
@@ -183,8 +187,35 @@ function group(title, src, items) {
 }
 function hit(req, name, tk, what) {
   const q = new URLSearchParams({ kind: req.kind, query: req.query || "", symbol: req.symbol || "" });
+  const more = req.kind === "market" ? "" :
+    `<button class="more" type="button" aria-expanded="false" data-docs='${esc(JSON.stringify({ kind: req.kind, query: req.query }))}'>${esc(tr("more_docs"))}</button>`;
   return `<div class="hit-row"><button class="hit" type="button" data-req='${esc(JSON.stringify(req))}'><b>${esc(name)}</b><span class="tk">${esc(tk || "")}</span><span class="what">${esc(what)}</span></button>` +
-    `<button class="orig" type="button" data-orig="/api/original?${esc(q.toString())}" title="${esc(tr(req.kind === "market" ? "orig_csv_title" : "orig_title"))}">${esc(tr(req.kind === "market" ? "orig_csv" : "orig"))}</button></div>`;
+    `<button class="orig" type="button" data-orig="/api/original?${esc(q.toString())}" title="${esc(tr(req.kind === "market" ? "orig_csv_title" : "orig_title"))}">${esc(tr(req.kind === "market" ? "orig_csv" : "orig"))}</button>${more}</div>` +
+    (more ? `<div class="docs" hidden></div>` : "");
+}
+
+// the other documents of a company: annual and quarterly reports, results releases, prospectuses, earlier years
+async function toggleDocs(btn) {
+  const box = btn.closest(".hit-row").nextElementSibling;
+  const open = box.hidden;
+  box.hidden = !open; btn.setAttribute("aria-expanded", String(open));
+  if (!open || box.dataset.loaded) return;
+  const req = JSON.parse(btn.dataset.docs);
+  box.innerHTML = `<p class="note">${esc(tr("docs_loading"))}</p>`;
+  try {
+    const res = await api(`/api/documents?kind=${encodeURIComponent(req.kind)}&query=${encodeURIComponent(req.query)}`);
+    box.innerHTML = res.documents.map((d) => {
+      const r = { kind: req.kind, query: req.query, url: d.url, form: d.form };
+      const q = new URLSearchParams(r);
+      const when = [d.period && tr("doc_period", d.period), d.filed && tr("doc_filed", d.filed), d.lang].filter(Boolean).join(" · ");
+      return `<div class="doc-row"><button class="hit" type="button" data-req='${esc(JSON.stringify(r))}'><span class="form">${esc(d.form)}</span>` +
+        `<b>${esc(d.what)}</b><span class="what">${esc(when)}</span></button>` +
+        `<button class="orig" type="button" data-orig="/api/original?${esc(q.toString())}" title="${esc(tr("orig_title"))}">${esc(tr("orig"))}</button></div>`;
+    }).join("") || `<p class="note">${esc(tr("no_docs"))}</p>`;
+    box.dataset.loaded = "1";
+  } catch (err) {
+    box.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+  }
 }
 
 // download the original document (SEC filing, ESEF report, or prices as CSV) without leaving the page
@@ -214,6 +245,8 @@ async function downloadOriginal(btn) {
 document.addEventListener("click", (e) => {
   const o = e.target.closest(".orig[data-orig]");
   if (o) return downloadOriginal(o);
+  const m = e.target.closest(".more[data-docs]");
+  if (m) return toggleDocs(m);
   const b = e.target.closest(".hit[data-req]");
   if (b) start(JSON.parse(b.dataset.req));
   const r = e.target.closest(".hit[data-open]");
