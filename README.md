@@ -57,33 +57,56 @@ published on SEC EDGAR (`.htm`), the ESEF report from filings.xbrl.org (`.xhtml`
 daily price history as CSV.
 
 In inline XBRL filings every figure is an XBRL tag, so its value and exact position are known — no guessing.
-In untagged PDF/HTML the figures are the ones printed on the page. In financial statements (English or Italian)
-the spider recognises the rows from their labels — Revenue / Ricavi, Net income / Utile netto, Diluted EPS, Net
-cash provided by operating activities, Purchases of property, plant and equipment… — reads the current and prior
-year columns and the scale ("in millions", "in migliaia di euro"), and computes the card, checks and findings as
-for XBRL filings. Statement lines the label rules do not know (common in IPO prospectuses) are recognised by the AI,
-whose values are checked against the page before they feed the card, checks and charts.
+In untagged PDF/HTML the figures are the ones printed on the page:
+
+- **Pages**: HTML filings are split into their printed pages — page breaks, or the fixed-size page boxes of EDGAR's
+  PDF-to-HTML renderings (an S-1 of 400+ pages included); EDGAR submission envelopes (`<DOCUMENT><TYPE>S-1…`) are
+  removed. Citations use the page numbers printed on the page ("p. 22", "p. F-7").
+- **Tables**: statement tables are read as tables: every cell gets its row and its column, and the column header
+  gives the period — "Year Ended December 31, 2025", "Six Months Ended June 30, 2026", "As of June 30, 2026";
+  "$ Change", "% Change", "Pro Forma" and "As Adjusted" columns are left out, percentage-of-revenue tables are
+  marked as percentages, the scale comes from "(in millions…)" (share counts "in thousands" too).
+- **Periods**: the current period is the latest one (an interim period when there is one) and it is compared with
+  the same period a year earlier; balance sheet items with the latest date and the previous year end. The same line
+  printed in the summary, the MD&A and the statements is counted once.
+- **Rows**: Revenue / Ricavi, Net income or Net loss / Utile netto, "Net loss per share…, basic and diluted",
+  Operating loss, Loss before provision for income taxes, Total operating expenses, Redeemable convertible preferred
+  stock, Total stockholders' deficit, Net cash provided by (used in) operating / investing / financing activities,
+  Purchases of property and equipment, Net increase in cash…
+- **Not figures**: days in dates ("June 30"), footnote marks ("Net loss(2)", "(Note 13)"), par values, phone
+  numbers and ZIP codes are skipped.
+- In PDFs the rows are recognised from their labels on the page with the year columns and scale; statement lines no
+  rule knows are recognised by the AI, whose values are checked against the page before they feed the card, checks
+  and charts.
 
 ## Report
 
 - **What the AI understood**: the kind of document, a short summary and the key points by theme (business, results,
   cash, risks, offering, ownership…), each with its pages — in the side panel at the end of the reading and in the PDF.
-- **Card (financial statements)**: revenue, net income, diluted EPS, free cash flow (operating cash flow − capex),
-  each with its year-on-year change and page.
-- **Arithmetic checks**: gross profit = revenue − cost of revenue; assets = liabilities + equity;
-  pre-tax income − taxes ≈ net income; diluted EPS × diluted shares ≈ net income.
+- **Card (financial statements)**: revenue, net income (or net loss), diluted EPS, free cash flow (operating cash flow −
+  capex, marked as computed), each with the exact amount, the change against the comparative period ("+1,300% vs
+  H1 2025") — or the comparative value when a loss makes a percentage meaningless — and the page.
+- **Arithmetic checks**, only those the figures allow: revenue − operating expenses = operating income;
+  pre-tax income − taxes = net income; assets = liabilities (+ redeemable preferred stock) + equity; diluted EPS ×
+  diluted shares ≈ net income; operating + investing + financing cash flows ≈ change in cash; gross profit = revenue −
+  cost of revenue. When none is possible the report says so; it never calls figures "verified" without a check.
 - **Findings**: growth, margins, cash conversion, shareholder returns, interest coverage, debt due vs cash,
   liquidity, leverage — deterministic calculations on the document's figures.
 - **Language**: Italian or English, chosen on the home page or while reading (the report is regenerated:
   findings, checks, labels, number formats — `$120B` / `$120 mld`).
-- **Download**: *Download report (PDF)* downloads a PDF in the app's style, drawn by the local server in a fraction
-  of a second (no browser involved). It contains the summary card and findings, then charts built only from the
-  figures read:
-  - financial statements: current vs prior year for the main lines, margins, balance sheet structure (assets vs
-    liabilities and equity), cash bridge from operating cash flow to free cash flow and shareholder returns, and a
-    key-ratios table with both years;
-  - market sheets: price chart, calendar-year returns, drawdown, monthly-returns heatmap and a return/risk table;
-  - then the arithmetic checks and every figure read with its page.
+- **Download**: *Download report (PDF)* downloads a PDF in the app's style and colour theme, drawn by the local server
+  in a fraction of a second (no browser involved). No pages of raw figures: it holds
+  - the summary card, the AI's summary and the key findings;
+  - **financial highlights**: income statement, balance sheet and cash flows with the two periods compared, the change
+    and the page of each line;
+  - charts: revenue and net income over every period the document prints (years, then the latest interim pair),
+    results against the comparative period, margins, balance sheet (side by side when there is a deficit or
+    redeemable preferred stock), where the operating cash goes; for market sheets the price chart, calendar-year
+    returns, drawdown and the monthly-returns heatmap;
+  - what the AI understood section by section, key ratios, the arithmetic checks with their pages, and how the
+    document was read (pages shown, pages the AI read, periods compared).
+- **Themes**: Neon, Ocean, Sunset, Forest, Mono and Midnight (dark) — the swatches on the home page and in the reading
+  bar change the interface, the spider, the highlights and the PDF; the choice is remembered in the browser.
 
 ## The spider
 
@@ -152,6 +175,8 @@ The server listens on `127.0.0.1` only. Documents and responses are cached in `.
 
 ## Known limits
 
+- A document already read is kept in `.data/`; after an update of Spider Analyst it is read again (the cache key
+  includes the version of the reading).
 - The AI reading takes from a few seconds to a couple of minutes for a long prospectus, and costs what the provider
   charges for about 65k input tokens (or counts toward your subscription's limits). Each report language is a new reading.
 - Financial figures depend on the issuer's tags: rare or custom concepts may be missing (the card shows "—").
@@ -168,7 +193,7 @@ launch.py                     cross-platform launcher (venv, dependencies, serve
 Start Spider Analyst.command  macOS/Linux double-click wrapper
 Start Spider Analyst.bat      Windows double-click wrapper
 server.py                     FastAPI server (localhost only)
-analyst/                      sources, iXBRL parser, financials, statements, market sheet, PDF/HTML, AI providers and reader, PDF report and charts, i18n
+analyst/                      sources, iXBRL parser, tables, financials, statements, market sheet, PDF/HTML, AI providers and reader, PDF report, charts and themes, i18n
 web/                          interface, spider animation, live report
 tests/                        offline tests on synthetic documents and simulated APIs
 ```

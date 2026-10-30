@@ -35,8 +35,10 @@ KEYWORDS = {
     "totale": 1, "total": 1, "anno": 1, "year": 1, "periodo": 1, "period": 1, "netto": 1, "net": 1, "lordo": 1, "gross": 1,
 }
 NUM_RE = re.compile(r"^[(\-−–+]?(?:[€$£¥]|EUR|USD)?\s?\d[\d.,'’ ]*%?\)?$")
-INLINE_NUM = re.compile(r"(?<![\w.,])[(\-−–+]?(?:[€$£¥]\s?)?\d{1,3}(?:[.,'’ ]\d{3})+(?:[.,]\d+)?%?\)?|(?<![\w.,])[(\-−–+]?(?:[€$£¥]\s?)?\d+(?:[.,]\d+)?%?\)?")
-MAX_PAGES_SHOWN = 7
+INLINE_NUM = re.compile(r"(?<![\w.,])[(\-−–+]?(?:[€$£¥]\s?)?\d{1,3}(?:[.,'’ ]\d{3})+(?![\d])(?:[.,]\d+)?%?\)?|(?<![\w.,])[(\-−–+]?(?:[€$£¥]\s?)?\d+(?:[.,]\d+)?%?\)?")
+MONTH_END = re.compile(r"(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec"
+                       r"|gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\.?\s*$", re.I)
+MAX_PAGES_SHOWN = 8
 MAX_FACTS_PAGE = 400
 # choose(all page texts) -> 0-based indexes of the pages to show, or None for the built-in choice
 Chooser = Optional[Callable[[list[str]], Optional[list[int]]]]
@@ -256,6 +258,8 @@ def _label_figures(words: list[dict]) -> list[dict]:
                 continue
             if amounts >= 2 and re.fullmatch(r"\d{1,2}", wd["t"]):
                 continue
+            if k > 0 and re.fullmatch(r"\d{1,2},?", wd["t"]) and MONTH_END.search(ln[k - 1]["t"]):
+                continue                                  # "June 30": a date, not a figure
             label_words = [w["t"] for w in ln[:k] if not is_figure(w["t"]) and not re.fullmatch(r"[\W\d]+", w["t"])][-9:]
             label = " ".join(label_words)
             if not label and li > 0:
@@ -293,21 +297,38 @@ PDF_CSS = """
 # ---------------------------------------------------------------- HTML (no XBRL tags)
 
 def html_document(data: bytes, base_url: Optional[str], choose: Chooser = None) -> dict:
+    """Plain HTML: pages, the figures on the pages shown, and the statement tables read with their periods.
+
+    choose(all page texts, table metrics) may pick the pages to show (0-based); the pages holding the
+    headline figures are always among them."""
+    from . import tables
+    from .i18n import lang
     doc = ixbrl.parse(data, base_url)          # sanitises and splits pages; no facts in plain HTML
+    frags = [lxml_html.fragment_fromstring(page or "<div></div>", create_parent="div") for page in doc.pages]
+    tbls = [tb for pi, fr in enumerate(frags, start=1) for tb in tables.page_tables(fr, pi)]
+    fin = tables.extract(tbls, lang())
+
+    key_pages: list[int] = []
+    for k in ("revenue", "net_income", "cfo", "total_assets", "eps_diluted", "cash", "operating_income"):
+        mm = fin["metrics"].get(k)
+        if mm and mm["cur"]["page"] - 1 not in key_pages:
+            key_pages.append(mm["cur"]["page"] - 1)
+    picked = choose(doc.page_text, fin, doc.page_labels) if choose else None
+    if not picked:
+        picked = best_pages(doc.page_text)
+    shown = list(dict.fromkeys(key_pages[:4] + sorted(picked)))[:MAX_PAGES_SHOWN + 2]
+    chosen = sorted({p + 1 for p in shown if 0 <= p < len(frags)})
+
+    cell_of = {}                               # td -> (table, column) of the tables on the pages shown
+    for tb in tbls:
+        if tb.page in chosen:
+            for r in tb.rows:
+                for c, cl in r.cells.items():
+                    cell_of[id(cl.el)] = (tb, tb.columns.get(c), r.label)
     facts, pages_out = [], []
-    scored = []
-    picked = choose(doc.page_text) if choose else None
-    for pi, page in enumerate(doc.pages, start=1):
-        if picked and pi - 1 not in picked:
-            continue
-        frag = lxml_html.fragment_fromstring(page or "<div></div>", create_parent="div")
+    for pi in chosen:
+        frag = frags[pi - 1]
         figs = _wrap_numbers(frag)
-        scored.append((sum(f["score"] for f in figs) + 0.1 * len(figs), pi, frag, figs))
-    chosen = {pi + 1 for pi in picked} if picked else \
-        {1} | {pi for s, pi, _, _ in sorted(scored, key=lambda x: -x[0])[:MAX_PAGES_SHOWN - 1] if s > 0}
-    for s, pi, frag, figs in scored:
-        if pi not in chosen:
-            continue
         figs.sort(key=lambda f: -f["score"])
         keep = figs[:MAX_FACTS_PAGE]
         keep_el = {id(f["el"]) for f in keep}
@@ -318,16 +339,33 @@ def html_document(data: bytes, base_url: Optional[str], choose: Chooser = None) 
                 continue
             fid = len(facts)
             el.set("data-f", str(fid))
-            facts.append({"id": fid, "label": f["label"] or "Cifra", "value": f["value"], "display": f["text"], "page": pi,
-                          "kind": "num", "col": "Valore", "key": f["score"] >= 2, "score": f["score"]})
+            td = next((a for a in el.iterancestors() if isinstance(a.tag, str) and a.tag.lower() in ("td", "th")), None)
+            tb, col, row_label = cell_of.get(id(td), (None, None, ""))
+            pct = bool(tb and (tb.percent or f["text"].endswith("%")))
+            period = tables.period_label(col.months if not col.instant else None, col.end, lang()) if col and col.end and not col.skip else ""
+            label = row_label or f["label"] or "Cifra"
+            facts.append({"id": fid, "label": label + (" (% " + ("dei ricavi" if lang() == "it" else "of revenue") + ")" if tb and tb.percent else ""),
+                          "value": f["value"], "display": f["text"], "page": pi, "period": period, "pct": pct,
+                          "kind": "num", "col": "Valore", "key": f["score"] >= 2 and not (tb and tb.percent), "score": f["score"]})
         inner = "".join(etree.tostring(c, method="html", encoding="unicode", with_tail=True) for c in frag)
         pages_out.append({"n": pi, "html": (frag.text and html.escape(frag.text) or "") + inner})
+
+    # the statement figures become facts the spider reads: link each table cell to its figure
+    for mm in fin["metrics"].values():
+        for which in ("cur", "prev"):
+            o = mm.get(which)
+            if not o:
+                continue
+            el = o.pop("el", None)
+            span = next((x for x in el.iter() if isinstance(x.tag, str) and x.get("data-f") is not None), None) if el is not None else None
+            o.update(id=int(span.get("data-f")) if span is not None and o["page"] in chosen else None, concept="", unit="")
     used = set(re.findall(r'class="([^"]+)"', "".join(p["html"] for p in pages_out)))
     used = {c for cl in used for c in cl.split()}
     headings = [h for h in doc.headings if h["page"] in chosen]
     return {"pages": pages_out, "facts": facts, "headings": headings,
-            "page_text": [doc.page_text[p["n"] - 1] for p in pages_out], "total_pages": len(doc.pages),
-            "title": "", "css": ixbrl.filter_css(doc.css, used), "info": doc.info}
+            "page_text": [doc.page_text[p["n"] - 1] for p in pages_out], "all_text": doc.page_text, "total_pages": len(doc.pages),
+            "title": "", "css": ixbrl.filter_css(doc.css, used), "info": doc.info, "fin": fin,
+            "page_labels": {i + 1: lb for i, lb in enumerate(doc.page_labels) if lb}}
 
 
 def _unwrap(el):
@@ -339,6 +377,41 @@ def _unwrap(el):
     else:
         parent.text = (parent.text or "") + text
     parent.remove(el)
+
+
+def _before(s: str, a: int, el, where: str) -> str:
+    """Up to 30 characters printed just before a number (text nodes split by layout included)."""
+    ctx = s[:a]
+    if not ctx.strip():
+        if where == "tail":
+            ctx = "".join(el.itertext())
+        else:
+            prev = el.getprevious()
+            ctx = "".join(prev.itertext()) + (prev.tail or "") if prev is not None else (el.getparent().text or "" if el.getparent() is not None else "")
+    return ctx[-30:]
+
+
+def _noise(s: str, a: int, b: int, tok: str, el, where: str) -> bool:
+    """Numbers that are not figures: days of a date, footnote marks, par values."""
+    before = _before(s, a, el, where)
+    if re.fullmatch(r"\d{1,2},?", tok) and MONTH_END.search(before):
+        return True                                       # "June 30"
+    if re.fullmatch(r"\(\d{1,2}\)", tok):
+        if before[-1:].isalnum() or before[-1:] in (")", "’", "'", "%"):
+            return True                                   # "Net loss(2)"
+        cell = next((x for x in [el] + list(el.iterancestors()) if isinstance(x.tag, str) and x.tag.lower() in ("td", "th")), None)
+        if cell is None or re.sub(r"[\s$€£\xa0]", "", "".join(cell.itertext())) != tok:
+            return True                                   # "(1)" in running text is a note, in a cell alone it is −1
+    if re.search(r"par value( of)?\s*$", before, re.I) or re.match(r"\s*par value", s[b:b + 14], re.I):
+        return True
+    if tok.endswith(")") and not tok.startswith("(") or re.search(r"\b(note|nota|item|section|rule|page)\s*$", before, re.I):
+        return True                                       # "(Note 13)", "Item 7"
+    if re.fullmatch(r"\(\d{3}\)", tok) and re.match(r"\s?\d{3}[-.\s]\d{4}", s[b:b + 10]):
+        return True                                       # phone number "(650) 555-0100"
+    in_cell = any(isinstance(x.tag, str) and x.tag.lower() in ("td", "th") for x in [el] + list(el.iterancestors()))
+    if not in_cell and re.fullmatch(r"\d{5,}", tok):
+        return True                                       # ZIP codes, registration numbers: figures carry separators
+    return False
 
 
 def _wrap_numbers(root) -> list[dict]:
@@ -357,7 +430,7 @@ def _wrap_numbers(root) -> list[dict]:
         pieces, last = [], 0
         for m in INLINE_NUM.finditer(s):
             tok = m.group().strip()
-            if not is_figure(tok):
+            if not is_figure(tok) or _noise(s, m.start(), m.end(), tok, el, where):
                 continue
             pieces.append((m.start(), m.end(), tok))
         if not pieces:

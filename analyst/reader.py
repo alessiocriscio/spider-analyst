@@ -34,16 +34,24 @@ SECTION_HINTS = (
 METRIC_KEYS = tuple(F.METRICS)
 
 
-def choose_pages(texts: list[str]) -> list[int]:
-    """0-based indexes of the pages the model reads, in document order."""
+def choose_pages(texts: list[str], must: Optional[list[int]] = None) -> list[int]:
+    """0-based indexes of the pages the model reads, in document order: all of them when they fit, otherwise
+    the pages that must be read (statements already found), the cover, the summary sections and the pages
+    densest with figures."""
     live = [i for i, t in enumerate(texts) if t.strip()]
     if sum(min(len(texts[i]), PAGE_CAP) for i in live) <= CHAR_BUDGET:
         return live
+
     def score(i: int) -> float:
         head = texts[i][:400].lower()
-        return _score_text(texts[i]) + 40 * sum(h in head for h in SECTION_HINTS)
+        toc = head.count("table of contents") > 0 and len(re.findall(r"\b\d{1,3}\b", texts[i])) > 25 and i < 15
+        return _score_text(texts[i]) + 40 * sum(h in head for h in SECTION_HINTS) - (200 if toc else 0)
+    first = [i for i in live if len(texts[i]) > 400][:3]
+    must = [i for i in (must or []) if i in live]
     picked, used = [], 0
-    for i in live[:3] + sorted(live[3:], key=lambda i: -score(i)):
+    for i in list(dict.fromkeys(must + first)) + sorted(live, key=lambda i: -score(i)):
+        if i in picked:
+            continue
         size = min(len(texts[i]), PAGE_CAP)
         if used + size > CHAR_BUDGET:
             continue
@@ -88,8 +96,10 @@ SCHEMA = {
 }
 
 
-def _prompt(title: str, pages: dict[int, str], total: int, known: dict[str, dict]) -> str:
-    body = "\n\n".join(f'<page n="{n}">\n{t[:PAGE_CAP]}\n</page>' for n, t in pages.items())
+def _prompt(title: str, pages: dict[int, str], total: int, known: dict[str, dict], labels: Optional[dict] = None) -> str:
+    labels = labels or {}
+    body = "\n\n".join(f'<page n="{n}"' + (f' printed="{labels[n]}"' if labels.get(n) else "") + f'>\n{t[:PAGE_CAP]}\n</page>'
+                       for n, t in pages.items())
     shown = ", ".join(map(str, pages)) if len(pages) < total else f"all {total}"
     known_block = ""
     if known:
@@ -103,13 +113,17 @@ def _prompt(title: str, pages: dict[int, str], total: int, known: dict[str, dict
         "\"KID\", \"fund factsheet\"), at most 8 words.\n"
         "- company: the issuer or product; period: the period the main figures refer to, as written; currency: ISO code if clear, else \"\".\n"
         "- summary: 3 to 5 sentences: what the company or instrument is, how it makes money, and the key takeaways.\n"
+        "  Cover the latest period first (an interim period if there is one), compared with the same period a year earlier; never "
+        "say that financial data is missing when tables with figures are in the pages or in the figures above.\n"
         "- sections: 3 to 6 sections that fit this document (e.g. Business, Financial results, Cash and balance sheet, "
         "Risks, The offering, Ownership and governance, Costs, Outlook), each with 2 to 5 short points; every point lists "
-        "the pages it comes from.\n"
+        "the n of the pages it comes from.\n"
         "- figures: up to 30 figures that matter most. label: at most 6 words. value: copied EXACTLY as printed on the "
-        "page, with its symbols (e.g. \"$1,234.5\", \"(12.3)\", \"45%\"). page: where it is printed. period: as written, or \"\". "
+        "page, with its symbols (e.g. \"$1,234.5\", \"(12.3)\", \"45%\"). page: the n of the <page> where it is printed (not the printed "
+        "page number). period: as written (e.g. \"six months ended June 30, 2026\"), or \"\". "
         "metric: the matching statement item if it is one (" + ", ".join(METRIC_KEYS) + "), else \"\". "
-        "role: \"current\" for the latest period and \"prior\" for the period before, only for statement items; else \"\". "
+        "role: \"current\" for the latest period (an interim period if there is one) and \"prior\" for the same period a year "
+        "earlier, only for statement items; else \"\". "
         "multiplier: the table's unit (\"in thousands\" → 1000, \"in millions\" → 1000000, \"in billions\" → 1000000000); "
         "1 for per-share amounts, percentages, counts and figures written in full.\n"
         "- findings: 4 to 6 key findings for an investor, one sentence each, at most 35 words; refs: the ids of the figures used "
@@ -130,10 +144,11 @@ def _sentences(text: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.!?])\s+(?=[A-ZÀ-Ý])", text.strip()) if s]
 
 
-def read(title: str, page_texts: dict[int, str], total_pages: int, known: Optional[dict[str, dict]] = None) -> Optional[dict]:
+def read(title: str, page_texts: dict[int, str], total_pages: int, known: Optional[dict[str, dict]] = None,
+         labels: Optional[dict] = None) -> Optional[dict]:
     """page_texts: {page number: text} of the pages given to the model. Returns the validated reading or None."""
     known = known or {}
-    res = ai._call(_prompt(title, page_texts, total_pages, known), SCHEMA, max_tokens=32000)
+    res = ai._call(_prompt(title, page_texts, total_pages, known, labels), SCHEMA, max_tokens=32000)
     if not res:
         return None
     return validate(res, page_texts, known)

@@ -146,7 +146,7 @@ def test_english_html_table_report():
     <tr><td>Profit for the year</td><td>60,000</td><td>45,000</td></tr>
     <tr><td>Total assets</td><td>900,000</td><td>850,000</td></tr></table></body></html>"""
     a = pipeline.run({"kind": "upload", "data": html, "name": "report.html", "lang": "it"}, lambda *_: None)
-    assert a["cols"][1] == ["2025", "2024"]
+    assert a["cols"][1] == ["Esercizio 2025", "Esercizio 2024"]
     card = {t["key"]: t for t in a["card"]}
     assert a["currency"] == "EUR" and card["revenue"]["display"] == "€500 mln" and card["revenue"]["yoy_display"] == "+25,0%"
 

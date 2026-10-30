@@ -16,17 +16,18 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from html import escape as html_escape
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import ai, financials as F, generic, ixbrl, market, reader, sources, statements
-from .i18n import system_lang, t, ui, using
+from . import ai, financials as F, generic, ixbrl, market, reader, sources, statements, tables
+from .i18n import lang, system_lang, t, ui, using
 
 DOCS = sources.CACHE / "docs"
 Progress = Callable[[str, float], None]
 
 BASE_CSS = """
-html,body{margin:0;background:#ececf1}
+html,body{margin:0;background:transparent}
 #sa-doc{padding:40px 0 120px}
 .sa-page{position:relative;background:#fff;margin:0 auto 48px;width:max-content;min-width:820px;max-width:1300px;
   box-shadow:0 2px 18px rgba(0,0,0,.12);border-radius:2px}
@@ -39,8 +40,12 @@ html,body{margin:0;background:#ececf1}
 """
 
 
+# bumped whenever the reading changes, so documents read by older code are read again
+PIPELINE_VERSION = 4
+
+
 def _id(*parts) -> str:
-    return hashlib.sha256("|".join(map(str, parts)).encode()).hexdigest()[:16]
+    return hashlib.sha256("|".join(map(str, (PIPELINE_VERSION,) + parts)).encode()).hexdigest()[:16]
 
 
 def _humanize(concept: str) -> str:
@@ -49,9 +54,11 @@ def _humanize(concept: str) -> str:
     return s[:1].upper() + s[1:].lower()
 
 
-def view_html(pages: list[dict], css: str, flush: bool = False) -> str:
+def view_html(pages: list[dict], css: str, flush: bool = False, labels: Optional[dict] = None) -> str:
+    labels = labels or {}
     body = "".join(
-        f'<section class="sa-page{" flush" if flush else ""}" data-page="{p["n"]}"><div class="sa-pnum">{t("Pagina", "Page")} {p["n"]}</div>'
+        f'<section class="sa-page{" flush" if flush else ""}" data-page="{p["n"]}"><div class="sa-pnum">{t("Pagina", "Page")} '
+        f'{html_escape(str(labels.get(p["n"]) or p["n"]))}</div>'
         f'<div class="sa-pbody">{p["html"]}</div></section>' for p in pages)
     return (f'<!doctype html><html><head><meta charset="utf-8"><style>{BASE_CSS}\n{css}</style></head>'
             f'<body><main id="sa-doc">{body}</main></body></html>')
@@ -100,8 +107,16 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
                                      "No financial figures recognised in this document's XBRL tags."))
     d = F.derive(m)
     checks = F.checks(m)
-    finds = F.findings(m, d, cur)
-    card = F.card(m, d, cur)
+    # the periods compared: the filing's period and the same period a year earlier ("FY2025" / "Q2 2026")
+    y_cur, y_prev = t("Corrente", "Current"), t("Precedente", "Prior")
+    if per.end:
+        from datetime import date as _date
+        import calendar as _cal
+        months = min((12, 9, 6, 3), key=lambda mth: abs((per.days or 365) - mth * 30.44))
+        prev_end = _date(per.end.year - 1, per.end.month, min(per.end.day, _cal.monthrange(per.end.year - 1, per.end.month)[1]))
+        y_cur, y_prev = tables.period_label(months, per.end, lang()), tables.period_label(months, prev_end, lang())
+    finds = F.findings(m, d, cur, period=y_cur, vs=y_prev)
+    card = F.card(m, d, cur, vs=y_prev)
 
     # pages: cover + the pages holding the headline figures (financial statements first)
     metric_ids = {mm["cur"]["id"]: k for k, mm in m.items()}
@@ -115,8 +130,6 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
     shown = sorted({cover, *best})
 
     facts, rows, cols = {}, {}, {}
-    y_cur = str(per.end.year) if per.end else t("Corrente", "Current")
-    y_prev = str(per.end.year - 1) if per.end else t("Precedente", "Prior")
     for p in shown:
         cols[p] = [y_cur, y_prev]
         table: dict[str, list] = {}
@@ -128,7 +141,8 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
             key = metric_ids.get(f.id)
             label = F.label(key) if key else (f.row_label or _humanize(f.concept))
             facts[f.id] = {"label": label, "display": f.display, "value_fmt": _fact_fmt(f, doc.units), "page": p,
-                           "key": bool(key), "metric": key, "role": role}
+                           "key": bool(key), "metric": key, "role": role,
+                           "period": y_cur if role == "cur" else y_prev if role == "prev" else ""}
             if role and not doc.contexts[f.context].dimensional:
                 rk = f.row_label or label
                 if rk not in table:
@@ -150,18 +164,20 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
         texts = doc.page_text
         try:
             reading = reader.read(f"{company} {form} {period}", {i + 1: texts[i] for i in reader.choose_pages(texts)},
-                                  len(texts), known=_ai_data(m, d, cur))
+                                  len(texts), known=_ai_data(m, d, cur, [y_cur, y_prev]),
+                                  labels={i + 1: lb for i, lb in enumerate(doc.page_labels) if lb})
         except Exception as e:  # network/API errors: keep the deterministic findings
             meta.setdefault("warnings", []).append(_ai_warning(e))
         if reading and len(reading["findings"]) >= 3:
-            finds = reading["findings"]
+            finds = _top_up(reading["findings"], finds)
     ai_used = bool(reading)
 
     used = set()
     for p in shown:
         used.update(c for cl in re.findall(r'class="([^"]+)"', doc.pages[p - 1]) for c in cl.split())
+    page_labels = {i + 1: lb for i, lb in enumerate(doc.page_labels) if lb}
     view = view_html([{"n": p, "html": doc.pages[p - 1]} for p in shown], ixbrl.filter_css(doc.css, used),
-                     flush=_is_paged_layout(doc.pages[shown[-1] - 1]))
+                     flush=_is_paged_layout(doc.pages[shown[-1] - 1]), labels=page_labels)
     a = {
         "id": meta["id"], "kind": "ixbrl",
         "title": company or t("Documento", "Document"),
@@ -174,7 +190,10 @@ def from_ixbrl(data: bytes, url: str, meta: dict, use_ai: bool, progress: Progre
         "headings": [h for h in doc.headings if h["page"] in shown],
         "findings": finds[:6], "card": card, "card_findings": finds[:3], "checks": checks,
         "warnings": doc.warnings + meta.get("warnings", []), "ai": ai_used, "ai_provider": ai.provider_name() if ai_used else "",
-        "fin": _fin_data(m, d, cur, [y_cur, y_prev]), "reading": _public(reading),
+        "fin": {**_fin_data(m, d, cur, [y_cur, y_prev]),
+                "periods": {"flow": [y_cur, y_prev], "stock": [tables.period_label(None, per.end, lang()) if per.end else y_cur,
+                                                               tables.period_label(None, per.prev_inst_end, lang()) if per.prev_inst_end else y_prev]}},
+        "reading": _public(reading), "page_labels": {str(k): v for k, v in page_labels.items()},
     }
     return save(a, view)
 
@@ -208,13 +227,19 @@ def _is_paged_layout(page_html: str) -> bool:
     return "pageView" in page_html[:400] or "position:absolute" in page_html[:2000].replace(" ", "")
 
 
-def _ai_data(m: dict, d: dict, cur: str) -> dict:
+def _ai_data(m: dict, d: dict, cur: str, flow: Optional[list] = None, stock: Optional[list] = None) -> dict:
+    """The figures already read, for the AI to cite by id; labels name the period ("H1 2026") when known."""
+    flow = flow or ["current year", "prior year"]
+    stock = stock or flow
     data = {}
     for k, mm in m.items():
         it = F.METRICS[k][1]
-        for which, tag in (("cur", "current year"), ("prev", "prior year")):
+        names = stock if mm.get("kind") == "stock" else flow
+        for which, tag in (("cur", names[0]), ("prev", names[1] if len(names) > 1 and names[1] else "prior period")):
             if mm.get(which):
-                data[f"{k}_{which}"] = {"label": f"{it} ({tag})", "display": F.fmt_value(k, mm[which]["value"], cur), "pages": [mm[which]["page"]]}
+                disp = F.fmt_value(k, mm[which]["value"], cur)
+                exact = F.fmt_exact(mm[which]["value"], cur) if F.METRICS[k][2] in ("flow", "stock") else ""
+                data[f"{k}_{which}"] = {"label": f"{it} ({tag})", "display": disp + (f" ({exact})" if exact else ""), "pages": [mm[which]["page"]]}
     ratios = {"fcf": ("Free cash flow", F.fmt_money), "gross_margin": ("Gross margin %", F.fmt_pct), "operating_margin": ("Operating margin %", F.fmt_pct),
               "net_margin": ("Net margin %", F.fmt_pct), "interest_coverage": ("Interest coverage (times)", lambda v: F.fmt_num(v, 1)),
               "current_ratio": ("Current ratio", lambda v: F.fmt_num(v, 2)), "return_pct_fcf": ("Share of FCF returned to shareholders", F.fmt_pct),
@@ -223,7 +248,7 @@ def _ai_data(m: dict, d: dict, cur: str) -> dict:
                 "interest_coverage": ("interest_expense",), "current_ratio": ("current_assets",), "return_pct_fcf": ("buybacks", "dividends"),
                 "debt_to_assets": ("total_assets",), "equity_multiplier": ("total_assets", "equity")}
     for k, (label, fmt) in ratios.items():
-        for which, tag in (("cur", "current year"), ("prev", "prior year")):
+        for which, tag in (("cur", flow[0]), ("prev", flow[1] if len(flow) > 1 and flow[1] else "prior period")):
             v = d[which].get(k)
             if v is None:
                 continue
@@ -283,13 +308,21 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
     progress(ui("Lettura delle pagine", "Reading the pages"), 0.3)
     reading: dict = {}
 
-    def choose(texts: list[str]) -> Optional[list[int]]:
+    def choose(texts: list[str], fin: Optional[dict] = None, labels: Optional[list[str]] = None) -> Optional[list[int]]:
         # the AI reads the document first; the spider then shows the pages holding what it found
         if not (use_ai and ai.available()):
             return None
         progress(_reading_step(), 0.4)
+        known = {}
+        if fin and _enough(fin["metrics"]):
+            m = fin["metrics"]
+            cur = statements.page_currency(" ".join(texts[o["cur"]["page"] - 1] for o in list(m.values())[:3]))
+            per = fin["periods"] or {}
+            known = _ai_data(m, F.derive(m), cur, per.get("flow"), per.get("stock"))
+        sel = reader.choose_pages(texts, must=[o["cur"]["page"] - 1 for o in (fin or {}).get("metrics", {}).values()][:6])
         try:
-            res = reader.read(name, {i + 1: texts[i] for i in reader.choose_pages(texts)}, len(texts))
+            res = reader.read(name, {i + 1: texts[i] for i in sel}, len(texts), known=known,
+                              labels={i + 1: labels[i] for i in sel if labels and labels[i]})
         except Exception as e:
             meta.setdefault("warnings", []).append(_ai_warning(e))
             return None
@@ -307,11 +340,13 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
     if not g["facts"] and not reading:
         raise sources.SourceError(ui("Non ho trovato cifre leggibili in questo documento (un PDF scansionato senza testo?).",
                                      "No readable figures in this document (a scanned PDF without text?)."))
-    facts = {f["id"]: {"label": f["label"], "display": f["display"], "value_fmt": f["display"], "page": f["page"],
-                       "key": f["key"], "metric": None, "role": "cur"} for f in g["facts"]}
+    facts = {f["id"]: {"label": f["label"], "display": f["display"], "value_fmt": f["display"] + ("%" if f.get("pct") and not f["display"].endswith("%") else ""),
+                       "page": f["page"], "key": f["key"], "metric": None, "role": "cur", "period": f.get("period", "")} for f in g["facts"]}
     first_heading = next((h["text"] for h in g["headings"] if h["page"] == g["pages"][0]["n"]), "") if g["pages"] else ""
+    info = g.get("info") or {}
+    doc_title = re.split(r"\s+[-–—|]\s+", info.get("DocumentTitle", ""))[0].strip()
     title = reading.get("company") or (g.get("title") if (g.get("title") or "").lower() not in ("", "untitled") else
-                                       ((g.get("info") or {}).get("EntityRegistrantName") or meta.get("company") or first_heading or name))
+                                       (info.get("EntityRegistrantName") or meta.get("company") or doc_title or first_heading or name))
     ai_used = bool(reading)
     fact_of: dict[int, int] = {}
     if ai_used:
@@ -321,7 +356,8 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
         for i, fid in fact_of.items():
             facts[fid].update(label=reading["figures"][i]["label"], key=True)
     finds = reading.get("findings") or []
-    kind_label = reading.get("doc_type") or (t("Bilancio", "Financial statements") if not ai_used else t("Documento", "Document"))
+    form = _form_of(g.get("all_text") or g["page_text"]) or meta.get("form", "")
+    kind_label = reading.get("doc_type") or (t(f"Modulo {form}", f"Form {form}") if form else t("Documento", "Document"))
     pages_note = t(f"{g['total_pages']} pagine", f"{g['total_pages']} pages")
     how = t("letto da ", "read by ") + ai.provider_name() if ai_used else t("estrazione euristica", "heuristic extraction")
     common = {"id": meta["id"], "kind": "pdf" if is_pdf else "html", "title": title,
@@ -331,15 +367,27 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
               "pages": [{"n": p["n"], "title": next((h["text"] for h in g["headings"] if h["page"] == p["n"]), t(f"Pagina {p['n']}", f"Page {p['n']}"))} for p in g["pages"]],
               "warnings": meta.get("warnings", []) + ([] if ai_used or not use_ai or ai.available() else
                                                       [t("Nessuna AI configurata: cifre scelte con regole euristiche.", "No AI configured: figures chosen by heuristic rules.")]),
-              "ai": ai_used, "ai_provider": ai.provider_name() if ai_used else "", "reading": _public(reading)}
-    view = view_html(g["pages"], g["css"], flush=is_pdf)
+              "ai": ai_used, "ai_provider": ai.provider_name() if ai_used else "", "reading": _public(reading),
+              "page_labels": {str(k): v for k, v in (g.get("page_labels") or {}).items()}}
+    view = view_html(g["pages"], g["css"], flush=is_pdf, labels=g.get("page_labels"))
 
-    # statements: rows recognised by their labels, or the statement items the AI named
-    x = _statement_metrics(g)
+    # statements: tables read with their column periods, rows recognised by their labels, or the items the AI named
+    x = None
+    fin = g.get("fin") or {}
+    if fin and _enough(fin["metrics"]):
+        m = fin["metrics"]
+        all_text = g.get("all_text") or g["page_text"]
+        x = {"metrics": m, "currency": reading.get("currency") or statements.page_currency(
+                 " ".join(all_text[o["cur"]["page"] - 1] for o in list(m.values())[:4])),
+             "periods": fin["periods"], "series": fin["series"]}
+    if not x:
+        x = _statement_metrics(g)
     if not x and ai_used:
         x = _ai_metrics(reading, fact_of)
     if x:
         stmt = _statement_view(g, facts, finds, x, ai_marked=ai_used)
+        if not reading.get("doc_type") and not form:
+            common["subtitle"] = common["subtitle"].replace(t("Documento", "Document"), t("Bilancio", "Financial statements"), 1)
         return save({**stmt, **common}, view)
 
     keyed = [next(f for f in g["facts"] if f["id"] == fact_of[i]) for i in sorted(fact_of)] if ai_used else \
@@ -357,8 +405,7 @@ def from_generic(data: bytes, name: str, url: Optional[str], meta: dict, use_ai:
         rows[p["n"]] = [{"label": facts[f["id"]]["label"], "cells": [f["id"]]} for f in g["facts"] if f["page"] == p["n"] and facts[f["id"]]["key"]]
     a = {**common, "currency": reading.get("currency", ""), "cols": cols, "rows": rows,
          "findings": finds[:6], "card": card, "card_findings": finds[:3],
-         "checks": [{"name": t("Ogni cifra mostrata compare nel testo della pagina", "Every figure shown appears in the page text"),
-                     "ok": True, "pages": [], "detail": ""}]}
+         "checks": []}               # no statements, so no arithmetic to check
     return save(a, view)
 
 
@@ -391,17 +438,34 @@ def _match_figures(figures: list[dict], found: list[dict]) -> dict[int, int]:
     return out
 
 
+def _form_of(texts: list[str]) -> str:
+    """The SEC form named on the cover ("FORM S-1"), if any."""
+    m = re.search(r"\bFORM\s+(S-1(?:/A)?|F-1(?:/A)?|10-K|10-Q|20-F|40-F|8-K|S-4|424B\d)\b", " ".join(texts[:3]))
+    return m.group(1) if m else ""
+
+
+def _top_up(ai_finds: list, computed: list, n: int = 6) -> list:
+    """The AI's findings first; computed ones fill the list when the AI wrote only a few."""
+    if len(ai_finds) >= 4:
+        return ai_finds[:n]
+    return (ai_finds + computed)[:n]
+
+
+def _enough(m: dict) -> bool:
+    return len(m) >= 3 and bool({"revenue", "net_income"} & set(m))
+
+
 def _statement_metrics(g: dict) -> Optional[dict]:
     texts = {p["n"]: t for p, t in zip(g["pages"], g["page_text"])}
     x = statements.extract(g["facts"], texts)
-    if len(x["metrics"]) < 3 or not ({"revenue", "net_income"} & set(x["metrics"])):
+    if not _enough(x["metrics"]):
         return None
     return x
 
 
 def _ai_metrics(reading: dict, fact_of: dict[int, int]) -> Optional[dict]:
     m = reader.metrics_from(reading["figures"], fact_of)
-    if len(m) < 3 or not ({"revenue", "net_income"} & set(m)):
+    if not _enough(m):
         return None
     cur_p = next((g["period"] for g in reading["figures"] if g["role"] == "current" and g["period"]), "")
     prev_p = next((g["period"] for g in reading["figures"] if g["role"] == "prior" and g["period"]), "")
@@ -409,28 +473,45 @@ def _ai_metrics(reading: dict, fact_of: dict[int, int]) -> Optional[dict]:
 
 
 def _statement_view(g: dict, facts: dict, ai_finds: list, x: dict, ai_marked: bool = False) -> dict:
-    """Financial statements without XBRL tags: same card, checks and findings as iXBRL."""
+    """Financial statements without XBRL tags: same card, checks, findings and charts as iXBRL."""
     m, cur = x["metrics"], x["currency"]
     d = F.derive(m)
-    y_cur, y_prev = (str(x["years"][0]), str(x["years"][1])) if x["years"] else (t("Anno corrente", "Current year"), t("Anno precedente", "Prior year"))
+    per = x.get("periods") or {}
+    flow = per.get("flow") or ([str(y) for y in x["years"]] if x.get("years") else [t("Periodo corrente", "Current period"), t("Periodo precedente", "Prior period")])
+    stock = per.get("stock") or flow
     rows: dict = {}
+    page_kind: dict = {}
     for key, mm in m.items():
-        for which in ("cur", "prev"):
-            if mm.get(which):
-                f = facts[mm[which]["id"]]
-                f.update(label=F.label(key), key=True, metric=key, role=which,
-                         value_fmt=F.fmt_value(key, mm[which]["value"], cur))
-        p = mm["cur"]["page"]
-        rows.setdefault(p, []).append({"label": F.label(key), "cells": [mm["cur"]["id"], mm["prev"]["id"] if mm.get("prev") else None]})
+        is_stock = mm["kind"] == "stock"
+        labels = stock if is_stock else flow
+        for i, which in enumerate(("cur", "prev")):
+            o = mm.get(which)
+            if o and o.get("id") is not None and o["id"] in facts:
+                facts[o["id"]].update(label=F.label(key), key=True, metric=key, role=which, period=labels[i] if i < len(labels) else "",
+                                      value_fmt=F.fmt_value(key, o["value"], cur))
+        cid = mm["cur"].get("id")
+        pid = mm["prev"].get("id") if mm.get("prev") else None
+        if cid is not None or pid is not None:
+            p = facts[cid]["page"] if cid is not None else mm["cur"]["page"]
+            rows.setdefault(p, []).append({"label": F.label(key), "cells": [cid, pid]})
+            page_kind.setdefault(p, []).append(is_stock)
     # other figures the AI marked stay in the table of their page
     for fid, f in facts.items():
         if ai_marked and f["key"] and not f.get("metric"):
             rows.setdefault(f["page"], []).append({"label": f["label"], "cells": [fid, None]})
-    finds = ai_finds or F.findings(m, d, cur)
-    return {"currency": cur, "cols": {p["n"]: [y_cur, y_prev] for p in g["pages"]},
+    det = F.findings(m, d, cur, period=flow[0], vs=flow[1] if len(flow) > 1 else "")
+    finds = _top_up(ai_finds, det) if ai_finds else det
+    cols = {}
+    for p in g["pages"]:
+        ks = page_kind.get(p["n"], [])
+        cols[p["n"]] = list(stock if ks and sum(ks) > len(ks) / 2 else flow)
+    fin = _fin_data(m, d, cur, list(flow))
+    fin["series"] = x.get("series") or {}
+    fin["periods"] = {"flow": list(flow), "stock": list(stock)}
+    return {"currency": cur, "cols": cols,
             "rows": {p["n"]: rows.get(p["n"], []) for p in g["pages"]},
-            "findings": finds[:6], "card_findings": finds[:3], "card": F.card(m, d, cur), "checks": F.checks(m),
-            "fin": _fin_data(m, d, cur, [y_cur, y_prev])}
+            "findings": finds[:6], "card_findings": finds[:3],
+            "card": F.card(m, d, cur, vs=flow[1] if len(flow) > 1 else ""), "checks": F.checks(m), "fin": fin}
 
 
 def _short(label: str, n: int = 38) -> str:

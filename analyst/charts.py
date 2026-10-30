@@ -17,6 +17,7 @@ from .i18n import t
 INK = colors.HexColor("#1d1c26")
 MUTED = colors.HexColor("#6c6a7c")
 GRID = colors.HexColor("#ecebf2")
+LINE_SOFT = colors.HexColor("#b9b6c8")
 PINK = colors.HexColor("#ff2d8f")
 PRIOR = colors.HexColor("#c9c6d8")
 BLUE = colors.HexColor("#3b6cff")
@@ -110,7 +111,7 @@ class GroupedBars(Chart):
                 if j == 1:
                     self.text(x + bw / 2, max(y0, y1) + 3, self.fmt(v), 6.5, INK, SANS_B, "center")
             self.text(cx, 12, label, 7, INK, anchor="center")
-            if cur is not None and prev:
+            if cur is not None and prev and cur > 0 and prev > 0:       # no growth rate across or between negatives
                 g = (cur - prev) / abs(prev)
                 self.text(cx, 3, F.fmt_pct(g, 1, signed=True), 6.5, UP if g >= 0 else DOWN, SANS_B, "center")
         c.setStrokeColor(INK); c.setLineWidth(0.7)
@@ -220,7 +221,10 @@ class BalanceStack(Chart):
                     self.text(x + bw / 2, yy + h / 2 - 2.5, self.fmt(v), 6, colors.white, SANS_B, "center")
                 yy += h
                 legend[part] = col
-            self.text(x + bw / 2, 12, label, 7, INK, anchor="center")
+            head, _, when = label.partition("\n")          # "Assets" over "Jun 30, 2025"
+            self.text(x + bw / 2, 13, head, 7, INK, anchor="center")
+            if when:
+                self.text(x + bw / 2, 4, when, 6.3, MUTED, anchor="center")
         lx, ly = 0, self.height - 10
         for part, col in legend.items():
             w = 14 + c.stringWidth(_s(part), SANS, 6.8) + 8
@@ -353,6 +357,76 @@ class Heatmap(Chart):
 
 # ---------------------------------------------------------------- sections
 
+class SeriesBars(Chart):
+    """One amount over several periods: fiscal years, then the latest interim period and its comparative."""
+
+    def __init__(self, width, height, items, fmt):
+        super().__init__(width, height)
+        self.items, self.fmt = items, fmt            # [(label, value, is_interim)]
+
+    def draw(self):
+        c = self.canv
+        left, bottom, top = 46, 24, self.height - 12
+        vals = [v for _, v, _ in self.items]
+        lo, hi = min(0, min(vals)), max(0, max(vals))
+        ticks = _nice_ticks(lo, hi)
+        lo, hi = min(lo, ticks[0]), max(hi, ticks[-1])
+        y = lambda v: bottom + (v - lo) / (hi - lo) * (top - bottom)
+        for tk in ticks:
+            c.setStrokeColor(GRID); c.setLineWidth(0.5)
+            c.line(left, y(tk), self.width, y(tk))
+            self.text(left - 4, y(tk) - 2.5, self.fmt(tk), 6.5, MUTED, anchor="right")
+        n = len(self.items)
+        gap = 14 if any(i for *_, i in self.items) and not all(i for *_, i in self.items) else 0
+        slot = (self.width - left - gap) / n
+        bw = min(34, slot * 0.6)
+        prev_interim = None
+        x0 = left
+        last_annual = max((i for i, (*_, it) in enumerate(self.items) if not it), default=-1)
+        for i, (label, v, interim) in enumerate(self.items):
+            if prev_interim is False and interim:
+                x0 += gap
+                c.setStrokeColor(LINE_SOFT); c.setDash(2, 2)
+                c.line(x0 - gap / 2, bottom - 4, x0 - gap / 2, top)
+                c.setDash()
+            prev_interim = interim
+            cx = x0 + slot * 0.5
+            y0, y1 = y(0), y(v)
+            c.setFillColor(PINK if interim and i == n - 1 else CYAN if interim else BLUE if i == last_annual else PRIOR)
+            c.rect(cx - bw / 2, min(y0, y1), bw, abs(y1 - y0), stroke=0, fill=1)
+            self.text(cx, max(y0, y1) + 3, self.fmt(v), 6.5, INK, SANS_B, "center")
+            # long period names on two lines: "Esercizio" / "2025", "1° sem." / "2026"
+            words = label.rsplit(" ", 1)
+            if len(words) == 2 and self.canv.stringWidth(label, SANS, 6.8) > slot - 4:
+                self.text(cx, 11, words[0], 6.3, MUTED, anchor="center")
+                self.text(cx, 3, words[1], 6.8, INK, anchor="center")
+            else:
+                self.text(cx, 7, label, 6.8, INK, anchor="center")
+            x0 += slot
+        c.setStrokeColor(INK); c.setLineWidth(0.7)
+        c.line(left, y(0), self.width, y(0))
+
+
+def trend_section(a: dict, width: float, h3) -> list:
+    """Revenue and net income over the periods the document prints: years, then the latest interim pair."""
+    fin = a.get("fin") or {}
+    series = fin.get("series") or {}
+    periods = (fin.get("periods") or {}).get("flow") or []
+    money = _money_fmt(fin.get("currency", ""))
+    out = []
+    for key, title in (("revenue", t("Ricavi nel tempo", "Revenue over time")), ("net_income", t("Risultato netto nel tempo", "Net income over time"))):
+        pts = series.get(key) or []
+        annual = [p for p in pts if p.get("months") == 12][-5:]
+        interim = [p for p in pts if p.get("months") not in (12, None) and p["label"] in periods[:2]]
+        interim.sort(key=lambda p: p["end"])
+        items = [(p["label"], p["value"], False) for p in annual] + [(p["label"], p["value"], True) for p in interim]
+        if len(items) >= 3:
+            out.append([h3(title), SeriesBars((width - 12) / 2, 150, items, money)])
+    if len(out) == 2:
+        return [_pair(out[0], out[1], width), Spacer(1, 6)]
+    return [x for part in out for x in (KeepTogether(part), Spacer(1, 6))]
+
+
 def _money_fmt(cur: str):
     return lambda v: F.fmt_money(v, cur)
 
@@ -382,7 +456,7 @@ def financial_section(a: dict, width: float, h3) -> list:
     if d["cur"].get("fcf") is not None:
         items.append(("Free cash flow", d["cur"]["fcf"], d["prev"].get("fcf")))
     if len(items) >= 2:
-        out += [KeepTogether([h3(t("Risultati: anno corrente e precedente", "Results: current vs prior year")),
+        out += [KeepTogether([h3(t(f"Risultati: {years[0]} e {years[1]}", f"Results: {years[0]} vs {years[1]}")),
                               GroupedBars(width, 150, items, years, money)]), Spacer(1, 6)]
 
     margins = [(lbl, d["cur"].get(k), d["prev"].get(k)) for k, lbl in (
@@ -394,16 +468,23 @@ def financial_section(a: dict, width: float, h3) -> list:
     if margins:
         left = [h3(t("Margini", "Margins")), MarginBars(half, 22 + 26 * len(margins), margins, years)]
     ta, ca, tl, cl, eq = val("total_assets"), val("current_assets"), d["cur"].get("total_liabilities"), val("current_liabilities"), val("equity")
-    if ta and eq is not None:
+    stock_years = [str(y) for y in ((fin.get("periods") or {}).get("stock") or years)]
+    if ta and eq is not None and (eq < 0 or val("temp_equity") is not None):
+        # a deficit or redeemable preferred stock does not stack: compare the blocks side by side
+        items = [(lbl, val(k), val(k, "prev")) for k, lbl in (
+            ("total_assets", t("Attivo", "Assets")), ("total_liabilities", t("Passivo", "Liabilities")),
+            ("temp_equity", t("Privilegiate", "Redeemable pref.")), ("equity", t("Patrimonio netto", "Equity"))) if val(k) is not None]
+        right = [h3(t("Stato patrimoniale", "Balance sheet")), GroupedBars((width - 12) / 2, max(160, 22 + 26 * len(margins)), items, stock_years, money)]
+    elif ta and eq is not None:
         cols = []
-        for w, yr in (("cur", years[0]), ("prev", years[1])):
+        for w, yr in (("cur", stock_years[0]), ("prev", stock_years[1] if len(stock_years) > 1 else "")):
             a_, c_, l_, cl_, e_ = val("total_assets", w), val("current_assets", w), d[w].get("total_liabilities"), val("current_liabilities", w), val("equity", w)
             if not a_ or e_ is None:
                 continue
-            cols.append((t("Attivo ", "Assets ") + yr, [(t("Attivo corrente", "Current assets"), c_ or 0, CYAN),
+            cols.append((t("Attivo", "Assets") + "\n" + yr, [(t("Attivo corrente", "Current assets"), c_ or 0, CYAN),
                                                        (t("Attivo non corrente", "Non-current assets"), a_ - (c_ or 0), BLUE)]))
             if l_ is not None:
-                cols.append((t("Passivo e PN ", "Liab. & equity ") + yr,
+                cols.append((t("Passivo e PN", "Liab. & equity") + "\n" + yr,
                              [(t("Passivo corrente", "Current liabilities"), cl_ or 0, AMBER),
                               (t("Passivo non corrente", "Non-current liabilities"), l_ - (cl_ or 0), colors.HexColor("#e07a2f")),
                               (t("Patrimonio netto", "Equity"), e_, VIOLET)]))

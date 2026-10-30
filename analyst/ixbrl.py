@@ -75,6 +75,7 @@ class IxDoc:
     page_text: list[str]
     page_fact_count: list[int]
     warnings: list[str] = field(default_factory=list)
+    page_labels: list[str] = field(default_factory=list)     # page numbers as printed ("i", "20", "F-55"), "" if none
 
     def fact(self, fid: int) -> Fact:
         return self.facts[fid]
@@ -147,7 +148,20 @@ def parse_number(text: str, fmt: str) -> Optional[float]:
     return float(m.group()) if m else None
 
 
+def _strip_wrapper(data: bytes) -> bytes:
+    """EDGAR submission files wrap the HTML in <DOCUMENT><TYPE>…<TEXT>: keep the first HTML document only."""
+    head = data[:4096].lstrip()[:200].upper()
+    if not (head.startswith(b"<DOCUMENT>") or head.startswith(b"<SEC-DOCUMENT>") or b"<TEXT>" in data[:4096].upper()):
+        return data
+    m = re.search(rb"<html[\s>]", data, re.I)
+    if not m:
+        return data
+    end = data.lower().find(b"</html>", m.start())
+    return data[m.start(): end + 7] if end > 0 else data[m.start():]
+
+
 def _load_tree(data: bytes):
+    data = _strip_wrapper(data)
     opts = dict(huge_tree=True, resolve_entities=False, no_network=True, remove_comments=True)
     try:
         root = etree.fromstring(data, etree.XMLParser(**opts))
@@ -206,7 +220,31 @@ def _page_like(el) -> bool:
     return bool(PAGE_CLASS.search(el.get("class") or ""))
 
 
+BOX_HEIGHT = re.compile(r"(?:^|;)\s*height:\s*[\d.]+\s*(pt|px|in|mm|cm)", re.I)
+
+
+def _page_box(el) -> bool:
+    """A fixed-size page box, as in PDF-to-HTML renderings (Workiva, Toppan Merrill): one div per printed page."""
+    if not isinstance(el.tag, str) or _local(el.tag).lower() != "div":
+        return False
+    st = (el.get("style") or "").lower().replace(" ", "")
+    return bool(BOX_HEIGHT.search(st)) and ("position:relative" in st or "overflow:hidden" in st or "page-break" in st)
+
+
 def _group(kids: list) -> list[list]:
+    boxes = sum(_page_box(k) for k in kids)
+    if boxes >= 3 and boxes >= 0.6 * len(kids):
+        pages: list[list] = []
+        pending: list = []                       # anything before the first box joins it
+        for k in kids:
+            if _page_box(k):
+                pages.append(pending + [k])
+                pending = []
+            elif pages:
+                pages[-1].append(k)
+            else:
+                pending.append(k)
+        return pages
     marked = sum(_page_like(k) for k in kids)
     if marked >= 2 and marked >= 0.5 * len(kids):
         pages, pending = [], []
@@ -352,6 +390,9 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
         if isinstance(el.tag, str) and _prefix(el.tag) == "ix" and _local(el.tag).lower() == "header":
             el.getparent().remove(el)
 
+    title_el = next((e for e in root.iter() if isinstance(e.tag, str) and _local(e.tag).lower() == "title"), None)
+    doc_title = _text(title_el) if title_el is not None else ""
+
     css_parts = []
     for el in list(root.iter()):
         if isinstance(el.tag, str) and _local(el.tag).lower() == "style":
@@ -361,6 +402,8 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
     facts: list[Fact] = []
     info: dict[str, str] = {}
     info_ctx: dict[str, str] = {}
+    if doc_title and len(doc_title) <= 200:
+        info["DocumentTitle"] = doc_title
     for el in root.iter():
         if not isinstance(el.tag, str) or _prefix(el.tag) != "ix":
             continue
@@ -439,6 +482,14 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
                     continue
                 if any(isinstance(d.tag, str) and d.tag.lower() in BLOCK_TAGS for d in el.iterdescendants()):
                     continue
+                # absolutely positioned layouts split a line into several <font> pieces: take the whole line
+                line = el.getparent()
+                if (tag == "font" and line is not None and isinstance(line.tag, str) and line.tag.lower() == "div"
+                        and all(isinstance(c.tag, str) and c.tag.lower() == "font" for c in line)
+                        and all(re.search(r"font-weight:\s*(bold|[6-9]00)", (c.get("style") or "").lower()) for c in line)):
+                    if line.get("data-h") is not None:
+                        continue
+                    el = line
                 t = _text(el)
                 letters = sum(c.isalpha() for c in t)
                 if not (4 <= len(t) <= 90) or letters < 0.6 * len(t) or not t[0].isalpha() or not t[0].isupper():
@@ -446,13 +497,24 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
                 if headings and headings[-1]["text"] == t:
                     continue
                 el.set("data-h", str(hid))
-                headings.append({"id": hid, "text": t, "page": pi})
+                headings.append({"id": hid, "text": t, "page": pi, "el": el})
                 hid += 1
                 per_page += 1
                 if per_page >= 8:
                     break
             if per_page >= 8:
                 break
+    # running headers ("Table of Contents" on every page) are not headings
+    from collections import Counter
+    seen = Counter(h["text"].lower() for h in headings)
+    kept = []
+    for h in headings:
+        el = h.pop("el")
+        if seen[h["text"].lower()] > 3:
+            del el.attrib["data-h"]
+        else:
+            kept.append(h)
+    headings = kept
 
     pages, page_text, page_fact_count = [], [], []
     for pi, els in enumerate(groups, start=1):
@@ -468,7 +530,35 @@ def parse(data: bytes, base_url: Optional[str] = None) -> IxDoc:
         page_text.append(re.sub(r"\s+", " ", " ".join(_block_text(t) for t in els)).strip())
         pages.append("".join(etree.tostring(t, method="html", encoding="unicode", with_tail=True) for t in els))
 
-    if len(pages) < 2:
-        warnings.append("Il documento non ha interruzioni di pagina riconoscibili: mostrato come pagina unica.")
+    if len(pages) < 2 and len(page_text[0] if page_text else "") > 20000:
+        from .i18n import t
+        warnings.append(t("Il documento non ha interruzioni di pagina riconoscibili: mostrato come pagina unica.",
+                          "The document has no recognisable page breaks: shown as a single page."))
     return IxDoc(pages, "\n".join(css_parts), facts, contexts, units, info, info_ctx, headings,
-                 page_text, page_fact_count, warnings)
+                 page_text, page_fact_count, warnings, _consistent([page_label(t) for t in page_text]))
+
+
+def _consistent(labels: list[str]) -> list[str]:
+    """Keep numeric page labels only when they run in step with the pages (label − index constant)."""
+    from collections import Counter
+    offs = Counter(int(lb) - i for i, lb in enumerate(labels) if lb.isdigit())
+    if not offs:
+        return labels
+    off, n = offs.most_common(1)[0]
+    numeric = sum(offs.values())
+    if n < 3 or n < 0.5 * numeric:
+        return ["" if lb.isdigit() else lb for lb in labels]
+    return ["" if lb.isdigit() and int(lb) - i != off else lb for i, lb in enumerate(labels)]
+
+
+PAGE_NO = re.compile(r"^(?:[ivxlc]{1,7}|[A-Z]{1,2}-\d{1,3}|\d{1,4})$", re.I)
+
+
+def page_label(text: str) -> str:
+    """The page number printed at the top or bottom of a page, if there is one."""
+    words = text.split()
+    for w in (words[:1] + words[-1:]) if words else []:
+        w = w.strip(".")
+        if PAGE_NO.match(w) and not re.fullmatch(r"(19|20)\d\d", w):
+            return w
+    return ""

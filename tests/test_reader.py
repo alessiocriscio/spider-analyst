@@ -104,7 +104,8 @@ def test_ixbrl_findings_cite_tagged_figures(fake_ai):
     fake_ai(answer)
     a = pipeline.run({"kind": "upload", "data": (FIX / "sec_10k.htm").read_bytes(), "name": "x.htm", "ai": True, "lang": "en"}, lambda *_: None)
     assert a["ai"] and a["reading"]["doc_type"] == "10-K annual report"
-    assert len(a["findings"]) == 3 and a["findings"][0]["text"].startswith("Item A was $")
+    assert a["findings"][0]["text"].startswith("Item A was $") and a["findings"][2]["text"].startswith("Item C")
+    assert len(a["findings"]) == 6                     # three by the AI, topped up with computed ones
 
 
 def test_page_choice_fits_the_budget():

@@ -192,7 +192,11 @@ def _call(prompt: str, schema: dict, max_tokens: int = 16000) -> Optional[dict]:
         return _call_claude_code(model, system, prompt, schema)
     if pid == "codex":
         return _call_codex(model, system, prompt, schema)
-    return _call_openai_compatible(pid, key, model, system, prompt, schema)
+    return _call_openai_compatible(pid, key, model, system, prompt, schema, max_tokens)
+
+
+CUT = ("La risposta dell'AI è stata troncata: riprova o scegli un modello con più spazio di risposta.",
+       "The AI's answer was cut short: try again or choose a model with a larger output limit.")
 
 
 def _call_anthropic(key: str, model: str, system: str, prompt: str, schema: dict, max_tokens: int) -> Optional[dict]:
@@ -216,8 +220,10 @@ def _call_anthropic(key: str, model: str, system: str, prompt: str, schema: dict
         raise AIError(f"Anthropic {e.status_code}: {getattr(e, 'message', '') or e}")
     except anthropic.APIConnectionError:
         raise AIError("Anthropic: " + _msg("connessione non riuscita", "connection failed"))
-    if resp.stop_reason in ("refusal", "max_tokens"):
-        return None
+    if resp.stop_reason == "refusal":
+        raise AIError("Anthropic: " + _msg("il modello ha rifiutato la richiesta.", "the model declined the request."))
+    if resp.stop_reason == "max_tokens":
+        raise AIError(_msg(*CUT))
     text = next((b.text for b in resp.content if b.type == "text"), "")
     return _json(text)
 
@@ -293,7 +299,7 @@ def test() -> str:
     return PROVIDERS[a[0]]["name"]
 
 
-def _call_openai_compatible(pid: str, key: str, model: str, system: str, prompt: str, schema: dict) -> Optional[dict]:
+def _call_openai_compatible(pid: str, key: str, model: str, system: str, prompt: str, schema: dict, max_tokens: int = 16000) -> Optional[dict]:
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     if pid == "openrouter":
         headers.update({"HTTP-Referer": "https://github.com/alessiocriscio/spider-analyst", "X-Title": "Spider Analyst"})
@@ -301,11 +307,21 @@ def _call_openai_compatible(pid: str, key: str, model: str, system: str, prompt:
               + json.dumps(schema, ensure_ascii=False))
     body = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             "response_format": {"type": "json_object"}}
+    # room for the answer: OpenAI's reasoning models name the limit differently, DeepSeek caps it at 8K
+    limit_key = "max_completion_tokens" if pid == "openai" else "max_tokens"
+    body[limit_key] = min(max_tokens, 8192) if pid == "deepseek" else max_tokens
     url = PROVIDERS[pid]["base"] + "/chat/completions"
     try:
         r = httpx.post(url, headers=headers, json=body, timeout=600)
-        if r.status_code == 400 and "response_format" in r.text:
-            body.pop("response_format")                       # some models do not support JSON mode
+        for _ in range(2):
+            if r.status_code != 400:
+                break
+            if "response_format" in r.text and "response_format" in body:
+                body.pop("response_format")                   # some models do not support JSON mode
+            elif limit_key in r.text and limit_key in body:
+                body.pop(limit_key)                           # or this name of the output limit
+            else:
+                break
             r = httpx.post(url, headers=headers, json=body, timeout=600)
     except httpx.HTTPError as e:
         raise AIError(f"{PROVIDERS[pid]['name']}: {type(e).__name__}")
@@ -317,10 +333,14 @@ def _call_openai_compatible(pid: str, key: str, model: str, system: str, prompt:
             msg = r.text[:200]
         raise AIError(f"{PROVIDERS[pid]['name']} {r.status_code}: {msg}")
     try:
-        text = r.json()["choices"][0]["message"]["content"] or ""
+        choice = r.json()["choices"][0]
+        text = choice["message"]["content"] or ""
     except (ValueError, KeyError, IndexError, TypeError):
         return None
-    return _json(text)
+    out = _json(text)
+    if out is None and choice.get("finish_reason") == "length":
+        raise AIError(_msg(*CUT))
+    return out
 
 
 def _json(text: str) -> Optional[dict]:

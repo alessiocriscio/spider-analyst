@@ -234,13 +234,14 @@ def doc_img(aid: str, name: str):
 
 
 @app.get("/api/doc/{aid}/report.pdf")
-def report_pdf(aid: str):
+def report_pdf(aid: str, theme: str = "neon"):
     """The report as a PDF in the app's style, drawn by the server (no browser involved)."""
     a = pipeline.load(aid)
     if not a:
         raise HTTPException(404, ui("analisi non trovata", "analysis not found"))
     name = re.sub(r"[^\w-]+", "-", a.get("title") or "report").strip("-").lower()[:80] or "report"
-    data = pdfreport.build(a)
+    from analyst import themes
+    data = pdfreport.build(a, theme if theme in themes.THEMES else themes.DEFAULT)
     return Response(data, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{name}-report-{a.get("lang", "en")}.pdf"',
                              "Cache-Control": "no-store"})

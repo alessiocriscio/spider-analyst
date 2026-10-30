@@ -10,7 +10,11 @@ financial instrument** and run locally (macOS, Windows, Linux) in a Chromium-bas
 - [x] `analyst/ixbrl.py` — inline XBRL parser (pages, `data-f` facts, `data-h` headings, row labels, filtered CSS)
 - [x] `analyst/sources.py` — SEC EDGAR, ESEF (filings.xbrl.org), Yahoo Finance (cookie + crumb, retries), disk cache
 - [x] `analyst/financials.py` — us-gaap / ifrs-full metrics, periods, ratios, checks, findings, card
-- [x] `analyst/statements.py` — untagged statements (English / Italian row labels → metrics)
+- [x] `analyst/statements.py` — untagged statements (English / Italian row labels → metrics, losses and deficits too)
+- [x] `analyst/tables.py` — HTML statement tables: grid with colspans, column periods from the headers (FY, 6M, 3M,
+      as of), change / pro forma / percentage columns, scale; latest period vs the same period a year earlier
+- [x] Paged HTML (EDGAR PDF-to-HTML page boxes, SGML envelopes), printed page numbers for citations
+- [x] `analyst/themes.py` + `web/themes.js` — colour themes for the app, the spider and the PDF
 - [x] `analyst/market.py` — generated market sheet for instruments without statements
 - [x] `analyst/generic.py` — PDF (page image + word layer) and plain HTML
 - [x] `analyst/ai.py` — AI providers (required): Anthropic SDK (streamed); OpenAI, Gemini, Mistral, xAI, DeepSeek,
@@ -54,7 +58,9 @@ compensation. Debt due within 12 months.
 
 Period: the non-dimensional context ending on `DocumentPeriodEndDate`; current vs prior year.
 Derived: FCF, margins, YoY growth, interest coverage, debt/assets, equity multiplier, % of FCF returned, current ratio.
-Checks: gross = revenue − cost; assets = liabilities + equity; pre-tax − taxes ≈ net income; EPS × shares ≈ net income.
+Checks (only those the figures allow): gross = revenue − cost; revenue − operating expenses = operating income;
+pre-tax − taxes = net income; assets = liabilities + redeemable preferred + equity; EPS × shares ≈ net income;
+CFO + CFI + CFF ≈ change in cash.
 Every figure cites its page; the occurrence highlighted is the one on the page with most facts (the statements).
 
 ## Interface

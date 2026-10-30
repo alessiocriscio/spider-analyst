@@ -1,4 +1,7 @@
 import { Spider, pingLine } from "./spider.js";
+import { THEMES, applyTheme, savedTheme, theme, themeId, rgba } from "./themes.js";
+
+applyTheme(savedTheme());
 
 // ------------------------------------------------------------------ interface language
 // English by default; Italian when the operating system is set to Italian (detected by the local server)
@@ -11,7 +14,7 @@ const UI = {
     search_label: "Search for an instrument", search_ph: "Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, gold…", search_btn: "Search",
     url_label: "Or paste the address of a document (PDF, HTML, iXBRL)", read_btn: "Read", drop_aria: "Upload a file",
     drop: "<b>Upload a document</b><br>Drop a PDF or HTML file here (statements, report, KID, in English or Italian) or <u>choose a file</u>",
-    opt_lang: "Report language", settings: "Settings", back_search: "Back to search",
+    opt_lang: "Report language", settings: "Settings", back_search: "Back to search", theme: "Theme",
     new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download report (PDF)",
     ua_label: "Identity for SEC EDGAR (User-Agent)", ua_ph: "Jane Doe jane@example.com",
     ua_help: "The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.",
@@ -44,7 +47,7 @@ const UI = {
     search_label: "Cerca uno strumento", search_ph: "Microsoft, Ferrari, BTC-USD, ^GSPC, EURUSD=X, oro…", search_btn: "Cerca",
     url_label: "Oppure incolla l'indirizzo di un documento (PDF, HTML, iXBRL)", read_btn: "Leggi", drop_aria: "Carica un file",
     drop: "<b>Carica un documento</b><br>Trascina qui un PDF o HTML (bilancio, report, KID, in italiano o in inglese) o <u>scegli un file</u>",
-    opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca",
+    opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca", theme: "Tema",
     new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica report (PDF)",
     ua_label: "Identificazione per SEC EDGAR (User-Agent)", ua_ph: "Nome Cognome nome@esempio.it",
     ua_help: "La SEC chiede a chi scarica i bilanci di indicare un nome e un contatto. Resta su questo computer.",
@@ -83,6 +86,24 @@ function applyUI() {
   document.documentElement.classList.add("ui-ready");
 }
 applyUI();
+
+// colour themes: swatches on the home page and in the reading bar
+function renderThemePick() {
+  for (const box of document.querySelectorAll(".theme-pick")) {
+    box.innerHTML = Object.entries(THEMES).map(([id, th]) =>
+      `<button type="button" data-theme-id="${id}" title="${th.name[UI_LANG] || th.name.en}" aria-label="${th.name[UI_LANG] || th.name.en}" ` +
+      `aria-pressed="${id === themeId()}" style="background:${th.swatch}"></button>`).join("");
+  }
+}
+renderThemePick();
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".theme-pick button[data-theme-id]");
+  if (!b) return;
+  e.preventDefault();
+  applyTheme(b.dataset.themeId);
+  renderThemePick();
+  state.director?.redraw();
+});
 
 // any unexpected error is shown on screen instead of leaving a still spider
 function showError(msg) {
@@ -342,7 +363,8 @@ const marksCv = $("#marks"), spiderCv = $("#spider");
 const I18N = {
   it: {
     of: "di", read: "cifre lette", other: "Altre cifre lette dal ragno", obs: "Osservazioni chiave", yoy: "sull'anno",
-    page: "Pagina", p: "p.", pp: "pp.", checks: "controlli superati su", foot_ai: "Osservazioni di Claude, verificate sulle cifre",
+    page: "Pagina", p: "p.", pp: "pp.", checks: "controlli superati su", foot_ai: "Testi di Claude; ogni numero citato è confrontato con il documento",
+    no_checks: "nessun controllo aritmetico possibile", was: "era",
     foot_det: "Calcoli deterministici sulle cifre del documento", pages_some: (l, n) => `Pagine mostrate: ${l} di ${n} (quelle con i prospetti e le cifre principali)`,
     pages_all: (n) => `Pagine lette: tutte (${n})`, report: "Report", source: "Fonte", made: "Generato da Spider Analyst il",
     figures: "Cifre lette", value: "Valore", label: "Voce", controls: "Controlli aritmetici", ok: "superato", ko: "non superato",
@@ -350,7 +372,8 @@ const I18N = {
   },
   en: {
     of: "of", read: "figures read", other: "Other figures the spider read", obs: "Key findings", yoy: "year on year",
-    page: "Page", p: "p.", pp: "pp.", checks: "checks passed out of", foot_ai: "Findings by Claude, checked against the figures",
+    page: "Page", p: "p.", pp: "pp.", checks: "checks passed out of", foot_ai: "Text by Claude; every number it cites is matched to the document",
+    no_checks: "no arithmetic check possible", was: "was",
     foot_det: "Deterministic calculations on the document's figures", pages_some: (l, n) => `Pages shown: ${l} of ${n} (the statements and key figures)`,
     pages_all: (n) => `Pages read: all (${n})`, report: "Report", source: "Source", made: "Generated by Spider Analyst on",
     figures: "Figures read", value: "Value", label: "Item", controls: "Arithmetic checks", ok: "passed", ko: "failed",
@@ -372,10 +395,7 @@ const BASE = { fig: 0.28, key: 0.7, head: 0.45, walk: 0.034, minHop: 0.12, maxHo
 const targetSeconds = (n) => Math.max(12, Math.min(75, 8 + n * 0.12));   // every figure, quicker
 
 // neon highlight palette of the reference clips
-const FX_PAL = [
-  { bg: "#FF00D4", fg: "#1b0024" }, { bg: "#39DFFF", fg: "#06222b" }, { bg: "#43FFA0", fg: "#062b17" },
-  { bg: "#FF8650", fg: "#2b0e00" }, { bg: "#FFD34D", fg: "#2b2100" }, { bg: "#783BFF", fg: "#ffffff" }];
-const FX_INK = ["#FF00D4", "#00B3E0", "#00C46A", "#FF6A2B", "#E0A800", "#783BFF"];
+// neon highlight palette of the reference clips (per theme, see themes.js)
 const FX_FONTS = ["ui-monospace, Menlo, monospace", "Georgia, 'Times New Roman', serif", "-apple-system, Helvetica, Arial, sans-serif"];
 const FX_CAP = { accent: 3, strip: 1, fill: 9 }, FX_MAX = 34;
 const FILLER = /^(the|a|an|and|or|of|to|in|on|for|by|as|at|is|was|were|be|that|this|with|from|which|its|their|our|we|it|are|has|have|had|not|no|any|all|such|other|per|il|lo|la|i|gli|le|di|da|in|con|su|per|tra|fra|e|o|del|della|dei|delle|che|un|una)$/i;
@@ -409,7 +429,7 @@ async function openAnalysis(id) {
   $("#r-other-title").textContent = T.other;
   $("#r-m").textContent = Object.keys(a.facts).length.toLocaleString(T.locale);
   const shown = a.pages.map((p) => p.n);
-  $("#r-pages").textContent = a.total_pages > shown.length ? T.pages_some(shown.join(", "), a.total_pages) : T.pages_all(a.total_pages);
+  $("#r-pages").textContent = a.total_pages > shown.length ? T.pages_some(shown.map(pageLabel).join(", "), a.total_pages) : T.pages_all(a.total_pages);
   $("#r-warn").textContent = (a.warnings || []).join(" ");
   $("#r-reading").hidden = true; $("#r-reading").innerHTML = "";
   state.director?.stop();
@@ -418,10 +438,15 @@ async function openAnalysis(id) {
   state.director.restart();
 }
 
+// page numbers as printed in the document ("F-7", "22") when known, else the page's position
+function pageLabel(n) {
+  return state.analysis?.page_labels?.[n] || state.analysis?.page_labels?.[String(n)] || n;
+}
+
 function fmtPages(pages) {
   if (!pages?.length) return "";
   const T = L();
-  return (pages.length > 1 ? T.pp + " " : T.p + " ") + pages.join(", ");
+  return (pages.length > 1 ? T.pp + " " : T.p + " ") + pages.map(pageLabel).join(", ");
 }
 
 class Director {
@@ -604,7 +629,7 @@ class Director {
     $("#finale").hidden = true; $("#finale").innerHTML = "";
     this.relayout();
     this.plan();
-    this.clock = 0; this.idx = -1; this.marks = []; this.touched = []; this.fx = []; this.pings = []; this.flashes = [];
+    this.clock = 0; this.idx = -1; this.marks = []; this.touched = []; this.fx = []; this.pings = []; this.flashes = []; this.listed = new Set();
     this.acc = { small: 0, fill: 0, accent: 0, strip: 0 };
     this.nextPink = 0; this.nextCyan = 0.13; this.done = false;
     this.count = 0; this.page = null;
@@ -618,6 +643,11 @@ class Director {
     $("#play").textContent = tr("pause");
     this.last = performance.now();
     this.raf = requestAnimationFrame((t) => this.frame(t));
+  }
+
+  // a new theme while paused: draw once more with its colours
+  redraw() {
+    if (!this.playing && this.timeline) this.frame(performance.now(), true);
   }
 
   stop() {
@@ -692,12 +722,12 @@ class Director {
     const mul = this.pace.mul;
     if (t >= this.nextPink) {
       const w = this.pickAhead(true);
-      if (w) { this.ping(w, "#ff2d8f", 0.38 / mul); if (Math.random() < 0.35) this.fxOn(this.single(w), Math.random() < 0.5 ? "ink" : "outline"); }
+      if (w) { this.ping(w, theme().ping, 0.38 / mul); if (Math.random() < 0.35) this.fxOn(this.single(w), Math.random() < 0.5 ? "ink" : "outline"); }
       this.nextPink = t + 0.26 / mul;
     }
     if (t >= this.nextCyan) {
       const w = this.pickAhead(false);
-      if (w) this.ping(w, "#27c8ff", 0.38 / mul);
+      if (w) this.ping(w, theme().sight, 0.38 / mul);
       this.nextCyan = t + 0.3 / mul;
     }
   }
@@ -727,7 +757,8 @@ class Director {
 
   touch(w) {
     // feet outline the words they land on; the newest 24 stay, older ones fade
-    this.touched.push({ w, t0: this.clock, ink: FX_INK[this.touched.length % FX_INK.length] });
+    const inks = theme().ink;
+    this.touched.push({ w, t0: this.clock, ink: inks[this.touched.length % inks.length] });
     if (this.touched.length > 40) this.touched.shift();
   }
 
@@ -801,8 +832,8 @@ class Director {
     if (kind === "fill" && count("fill") >= FX_CAP.fill) kind = "outline";
     const x1 = Math.min(...c.els.map((w) => w.x)), y1 = Math.min(...c.els.map((w) => w.y));
     const x2 = Math.max(...c.els.map((w) => w.x + w.w)), y2 = Math.max(...c.els.map((w) => w.y + w.h));
-    const key = c.text + "|" + Math.round(y1), ci = hash(key) % FX_PAL.length;
-    const o = { kind, els: c.els, text: c.text, r: { x: x1, y: y1, w: x2 - x1, h: y2 - y1 }, pal: FX_PAL[ci], ink: FX_INK[ci],
+    const th = theme(), key = c.text + "|" + Math.round(y1), ci = hash(key) % th.fx.length;
+    const o = { kind, els: c.els, text: c.text, r: { x: x1, y: y1, w: x2 - x1, h: y2 - y1 }, pal: th.fx[ci], ink: th.ink[ci % th.ink.length],
       font: FX_FONTS[hash(key + "f") % 3], age: 0 };
     if (kind === "outline") o.ttl = 2600 + Math.random() * 1800;
     else if (kind === "ink") o.ttl = 3200 + Math.random() * 1800;
@@ -831,7 +862,7 @@ class Director {
     this.marks.push({ kind: "found", r: s.r, t: this.clock, key: s.fact.key });
     if (s.label) this.marks.push({ kind: "label", r: s.label, t: this.clock });
     // the pink line to the figure being read
-    this.pings.push({ to: { x: s.r.x + s.r.w / 2, y: s.r.y + s.r.h / 2 }, t0: this.clock, dur: Math.max(0.3, 0.6 / this.pace.mul), color: "#ff2d8f", width: 2 });
+    this.pings.push({ to: { x: s.r.x + s.r.w / 2, y: s.r.y + s.r.h / 2 }, t0: this.clock, dur: Math.max(0.3, 0.6 / this.pace.mul), color: theme().ping, width: 2 });
     this.spider.pounce();
     this.count++;
     $("#r-n").textContent = this.count.toLocaleString(L().locale);
@@ -841,7 +872,7 @@ class Director {
   enterPage(n) {
     this.page = n;
     const a = this.a, p = a.pages.find((x) => x.n === n), T = L();
-    $("#r-sec-title").textContent = `${p ? p.title : T.page + " " + n} · ${T.p} ${n}`;
+    $("#r-sec-title").textContent = `${p ? p.title : T.page + " " + pageLabel(n)} · ${T.p} ${pageLabel(n)}`;
     const cols = a.cols[n] || [T.value];
     $("#r-table thead").innerHTML = `<tr><th></th>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>`;
     const rows = (a.rows[n] || []).filter((r) => r.cells.some((fid) => fid !== null && this.planned.has(String(fid))));
@@ -863,8 +894,12 @@ class Director {
       tr.scrollIntoView({ block: "nearest" });
       return;
     }
+    // the same line is often printed in the summary, the MD&A and the statements: list it once
+    const k = `${s.fact.label}|${s.fact.period || ""}|${s.fact.value_fmt}`;
+    if (this.listed.has(k)) return;
+    this.listed.add(k);
     const li = document.createElement("li");
-    li.innerHTML = `<span>${esc(s.fact.label)}</span><b>${esc(s.fact.value_fmt)}</b><i>${L().p} ${s.page}</i>`;
+    li.innerHTML = `<span>${esc(s.fact.label)}${s.fact.period ? `<small>${esc(s.fact.period)}</small>` : ""}</span><b>${esc(s.fact.value_fmt)}</b><i>${L().p} ${esc(pageLabel(s.page))}</i>`;
     const list = $("#r-other-list");
     list.prepend(li);
     while (list.children.length > 400) list.lastChild.remove();
@@ -885,11 +920,11 @@ class Director {
         m.fillStyle = "rgba(255,211,77,0.9)";
         m.fillRect(mk.r.x - 2, mk.r.y, (mk.r.w + 4) * grow, mk.r.h);
       } else if (mk.kind === "head") {
-        m.fillStyle = "rgba(57,223,255,0.45)";
+        m.fillStyle = rgba(theme().sight, 0.45);
         m.fillRect(mk.r.x - 3, mk.r.y - 1, (mk.r.w + 6) * grow, mk.r.h + 2);
       } else {
-        m.fillStyle = mk.key ? "rgba(255,0,212,0.30)" : "rgba(255,45,143,0.16)";
-        m.strokeStyle = "#ff2d8f";
+        m.fillStyle = rgba(theme().ping, mk.key ? 0.30 : 0.16);
+        m.strokeStyle = theme().ping;
         m.lineWidth = mk.key ? 1.8 : 1.2;
         const pad = 1.5 + (1 - grow) * 5;
         m.fillRect(mk.r.x - pad, mk.r.y - pad, mk.r.w + pad * 2, mk.r.h + pad * 2);
@@ -899,7 +934,7 @@ class Director {
     // flashes of the words being pinged
     this.flashes = this.flashes.filter((f) => now - f.t0 < f.dur);
     for (const f of this.flashes) {
-      m.fillStyle = f.color === "#27c8ff" ? "rgba(39,200,255,0.32)" : "rgba(255,45,143,0.32)";
+      m.fillStyle = rgba(f.color, 0.32);
       m.fillRect(f.w.x - 1, f.w.y - 1, f.w.w + 2, f.w.h + 2);
       m.strokeStyle = f.color; m.lineWidth = 1;
       m.strokeRect(f.w.x - 1, f.w.y - 1, f.w.w + 2, f.w.h + 2);
@@ -1002,13 +1037,17 @@ function cardHTML(a, count) {
   const T = L(), lang = a.lang || "it";
   const passed = (a.checks || []).filter((c) => c.ok).length;
   const tiles = (a.card || []).map((t) => {
-    const y = t.yoy_display ? `<div class="y ${t.yoy_display.startsWith("+") ? "up" : "down"}">${esc(t.yoy_display)} ${esc(T.yoy)}</div>` : "";
-    return `<div class="tile"><div class="l">${esc(lang === "en" && t.en ? t.en : t.it)}</div><div class="v">${esc(t.display)}</div>${y}<span class="pg">${fmtPages(t.pages)}</span></div>`;
+    const y = t.yoy_display ? `<div class="y ${t.yoy_display.startsWith("+") ? "up" : "down"}">${esc(t.yoy_display)} <span class="vs">${esc(t.vs ? "vs " + t.vs : T.yoy)}</span></div>`
+      : t.prev_display ? `<div class="was">${esc(T.was)} ${esc(t.prev_display)}${t.vs ? ` (${esc(t.vs)})` : ""}</div>` : "";
+    return `<div class="tile"><div class="l">${esc(lang === "en" && t.en ? t.en : t.it)}</div><div class="v">${esc(t.display)}</div>` +
+      (t.exact ? `<div class="x">${esc(t.exact)}</div>` : "") + y + (t.note ? `<div class="nt">${esc(t.note)}</div>` : "") +
+      `<span class="pg">${fmtPages(t.pages)}</span></div>`;
   }).join("");
+  const nchk = (a.checks || []).length;
   return `<div class="card"><h2>${esc(a.title)}</h2><p class="sub">${esc(a.subtitle)}</p>
     <div class="tiles">${tiles}</div>
     <ul>${(a.card_findings || []).map((f) => `<li>${esc(f.text)} <span class="pg">${fmtPages(f.pages)}</span></li>`).join("")}</ul>
-    <div class="foot"><span><b>${count.toLocaleString(T.locale)}</b> ${esc(T.read)} · <b>${passed}</b> ${esc(T.checks)} ${(a.checks || []).length}</span>
+    <div class="foot"><span><b>${count.toLocaleString(T.locale)}</b> ${esc(T.read)} · ${nchk ? `<b>${passed}</b> ${esc(T.checks)} ${nchk}` : esc(T.no_checks)}</span>
     <span>${esc(a.ai ? T.foot_ai.replace("Claude", a.ai_provider || "AI") : T.foot_det)}</span></div></div>`;
 }
 
@@ -1017,7 +1056,7 @@ function cardHTML(a, count) {
 // a plain link to the server-made PDF: the browser downloads it as a normal file
 function downloadReport(a) {
   const link = document.createElement("a");
-  link.href = `/api/doc/${a.id}/report.pdf`;
+  link.href = `/api/doc/${a.id}/report.pdf?theme=${encodeURIComponent(themeId())}`;
   link.download = "";
   document.body.append(link); link.click(); link.remove();
 }
