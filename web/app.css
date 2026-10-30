@@ -179,7 +179,7 @@ dialog select { display: block; width: 100%; margin-top: 4px; }
 .orig:hover { background: var(--card); border-color: var(--ink); }
 .orig:disabled { color: var(--muted); cursor: progress; }
 .more { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
-.more:hover, .more[aria-expanded="true"] { border-color: var(--ink); }
+.more:hover, .more[aria-expanded="true"] { background: var(--card); color: var(--ink); border-color: var(--ink); }
 .docs { margin: 4px 0 10px 18px; padding-left: 10px; border-left: 2px solid var(--line); max-height: 340px; overflow: auto; }
 .doc-row { display: flex; gap: 6px; margin: 4px 0; }
 .doc-row .hit { flex: 1; min-width: 0; margin: 0; padding: 6px 10px; font-size: 14px; }

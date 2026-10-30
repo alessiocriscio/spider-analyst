@@ -95,12 +95,18 @@ no longer called "Q2" from the calendar (Apple's fiscal Q3 ends in June): "3M to
 
 ### 4. Faster spider (last, only if it does not touch the reading)
 
-- [ ] Shorter pauses and faster walking between figures in `web/app.js` pacing; same figures read and lit, same
-      order, same report. Verify with the browser test (`e2e/`) that every figure is still visited.
+- [x] `web/app.js`: target time `max(7, min(36, 5 + 0.055·figures))` s (was `max(12, min(75, 8 + 0.12·n))`), time
+      compression floor 0.03 (was 0.06), gait/camera multiplier up to 5; headline figures (revenue, net income, EPS,
+      operating cash flow, current period) keep ≥ 0.45 s; finale observations a bit quicker. Stops, order, lit
+      figures and report are unchanged.
+- [x] Browser check (`$SC/e2e/speed.mjs`, fake Claude CLI in `$SC/e2e/bin`, server on port 8799):
+      synthetic S-1 86 figures 18.9 s → 11.7 s, Amazon 10-K 461 figures 63.8 s → 32.5 s; 86/86 and 461/461 figures
+      lit, no console errors; the download menu gives PDF, PPTX and XLSX. `picker.mjs`/`pick2.mjs`: ESEF "Other
+      documents" lists five Ferrari years and the 2024 report opens.
 
 ### 5. Wrap-up
 
-- [ ] README / PLAN updated, tests green, commit and push, answer in Italian.
+- [x] README / PLAN updated, tests green (63), committed and pushed; answer in Italian.
 
 ## How to verify
 

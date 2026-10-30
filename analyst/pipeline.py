@@ -41,7 +41,7 @@ html,body{margin:0;background:transparent}
 
 
 # bumped whenever the reading changes, so documents read by older code are read again
-PIPELINE_VERSION = 5
+PIPELINE_VERSION = 6
 
 
 def _id(*parts) -> str:
@@ -598,7 +598,7 @@ def _run(req: dict, data: Optional[bytes], lang: str, progress: Progress) -> dic
             return hit
         progress(ui("Scarico la relazione annuale (può pesare decine di MB)", "Downloading the annual report (it can be tens of MB)"), 0.18)
         data = sources.fetch(f["url"], ttl=None)
-        meta = {"id": aid, "url": f["url"], "form": "ESEF", "company": f.get("company", ""), "source_label": "ESEF · filings.xbrl.org"}
+        meta = {"id": aid, "url": f["url"], "form": "ESEF", "company": f.get("company", ""), "source_label": "filings.xbrl.org"}
         return from_ixbrl(data, f["url"], meta, use_ai, progress)
     if kind == "market":
         sym = req["symbol"].strip()

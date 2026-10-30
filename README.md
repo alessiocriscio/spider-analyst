@@ -134,7 +134,8 @@ a body that sways and stretches with its stride, a pulse and a strike of the fro
 front legs that keep tapping the words while it reads, and a silk line that swings as it pulls on it.
 
 It always reads **every** figure on the pages it opens and adapts its pace to how many there are (about
-12 seconds for a short document, up to about 75 seconds for a long one). The "N of M figures read" counter counts
+7 seconds for a short document, up to about 35 seconds for a long one); the headline figures (revenue, net income,
+EPS, operating cash flow) stay under it for at least half a second, however fast it walks. The "N of M figures read" counter counts
 the figures on those pages, and the panel lists which pages of the document were read (the cover and the pages
 with the financial statements and the key figures).
 
@@ -199,7 +200,9 @@ The server listens on `127.0.0.1` only. Documents and responses are cached in `.
   filings.xbrl.org and SEC EDGAR answer "busy" (HTTP 429/503) at times: the app waits and retries three times.
 - Untagged PDFs are read from their layout: a statement printed as an image (a scan) has no text to read, and an
   unusual layout can leave a line unread or take it from another table; the page of every figure is shown so it can
-  be checked. Checked on 19 real SEC filings and earnings releases (FinanceBench) and 10 ESEF reports — see PLAN.md.
+  be checked. Checked on 44 real SEC filings and earnings releases (FinanceBench) and 21 ESEF reports — see
+  IMPLEMENTATION_PLAN.md. A diluted EPS row labelled only by a section header above it ("Earnings per share — diluted:")
+  is often left to the AI.
 - Free cash flow uses capex on property, plant and equipment; some companies also include intangibles.
 - Yahoo Finance has no official API. It rejects clients that do not look like a browser (HTTP 429), so the app
   talks to it through `curl_cffi`, which presents itself as Chrome, with a session cookie and both hosts. For crypto

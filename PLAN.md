@@ -80,7 +80,8 @@ Every figure cites its page; the occurrence highlighted is the one on the page w
 - Spider (canvas), modelled on the reference clips: narrow outlined body with a head dot, three-segment legs solved
   with FABRIK, alternating gait with at most four legs in the air, feet planted on words, trailing silk line,
   pink/cyan pings, neon highlights; body follows the itinerary with a damped spring.
-- Pacing: every figure on the shown pages is visited; the pace scales with their number (≈12 s to ≈75 s).
+- Pacing: every figure on the shown pages is visited; the pace scales with their number (≈7 s to ≈35 s); headline
+  figures keep at least 0.45 s.
 - Speed: PDF pages are chosen from plain text and only the chosen pages get word boxes and (JPEG) images.
 - Report panel: "N of M figures read", pages read, table of the section being read, other figures with page.
 - Finale: key findings one by one, then the card (4 tiles with YoY change and page, 3 findings, figures and checks).

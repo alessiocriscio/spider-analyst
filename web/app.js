@@ -425,7 +425,11 @@ function dash(u, dist) {
 }
 
 const BASE = { fig: 0.28, key: 0.7, head: 0.45, walk: 0.034, minHop: 0.12, maxHop: 1.4 };
-const targetSeconds = (n) => Math.max(12, Math.min(75, 8 + n * 0.12));   // every figure, quicker
+// every figure is still visited and lit, in about half the time it took before
+const targetSeconds = (n) => Math.max(7, Math.min(36, 5 + n * 0.055));
+const KEY_DWELL = 0.45;   // a headline figure stays under the spider long enough to read, however fast the walk
+const HEADLINE = new Set(["revenue", "net_income", "eps_diluted", "cfo"]);
+const headline = (s) => s.type === "f" && s.fact.key && s.fact.role === "cur" && HEADLINE.has(s.fact.metric);
 
 // neon highlight palette of the reference clips
 // neon highlight palette of the reference clips (per theme, see themes.js)
@@ -644,18 +648,19 @@ class Director {
     });
     const natural = legs.reduce((t, [p, q]) => t + p + q, 0);
     const figures = stops.filter((s) => s.type === "f").length;
-    const k = Math.max(0.06, Math.min(1, targetSeconds(figures) / natural));
+    const k = Math.max(0.03, Math.min(1, targetSeconds(figures) / natural));
     let t = 0;
     this.timeline = stops.map((s, i) => {
-      const seg = { s, p: pts[i], t0: t, t1: t + legs[i][0] * k, t2: t + (legs[i][0] + legs[i][1]) * k };
+      const stay = headline(s) ? Math.max(KEY_DWELL, legs[i][1] * k) : legs[i][1] * k;
+      const seg = { s, p: pts[i], t0: t, t1: t + legs[i][0] * k, t2: t + legs[i][0] * k + stay };
       t = seg.t2;
       return seg;
     });
     this.start0 = { x: pts[0].x, y: pts[0].y - 160 * this.U };
     this.planned = new Set(stops.filter((x) => x.type === "f").map((x) => String(x.id)));
     this.total = t;
-    const mul = Math.min(3.5, 1 / Math.sqrt(k));
-    this.pace = { k, mul, cam: Math.min(10, 4 * mul), obs: Math.max(550, 1100 / mul) };
+    const mul = Math.min(5, 1 / Math.sqrt(k));
+    this.pace = { k, mul, cam: Math.min(14, 4 * mul), obs: Math.max(380, 900 / mul) };
     this.spider.speed = mul;
   }
 
@@ -1049,7 +1054,7 @@ class Director {
       if (a.reading.summary) {
         box.innerHTML = `<div class="obs sum"><h2>${esc(T.summary)}</h2><p>${esc(a.reading.summary)}</p></div>`;
         await sleep(30); box.querySelector(".sum").classList.add("in");
-        await sleep(Math.max(1800, per * 2.2));
+        await sleep(Math.max(1400, per * 2.2));
       }
     }
     if (finds.length) {
