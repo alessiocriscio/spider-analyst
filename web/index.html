@@ -70,7 +70,14 @@
       <button id="restart" type="button" data-i18n="restart">Restart</button>
       <select id="lang2" data-i18n-aria="opt_lang" aria-label="Report language"><option value="en">English</option><option value="it">Italiano</option></select>
       <span class="theme-pick" role="group" data-i18n-aria="theme" aria-label="Theme"></span>
-      <button id="download" type="button" data-i18n="download">Download report</button>
+      <span class="dl">
+        <button id="download" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n="download">Download</button>
+        <span id="dl-menu" class="dl-menu" role="menu" hidden>
+          <button type="button" role="menuitem" data-fmt="report.pdf" data-i18n="dl_pdf">Report (PDF)</button>
+          <button type="button" role="menuitem" data-fmt="report.pptx" data-i18n="dl_pptx">Slides (PowerPoint)</button>
+          <button type="button" role="menuitem" data-fmt="data.xlsx" data-i18n="dl_xlsx">Figures (Excel)</button>
+        </span>
+      </span>
     </div>
   </header>
   <div id="frame">

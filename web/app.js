@@ -15,7 +15,7 @@ const UI = {
     url_label: "Or paste the address of a document (PDF, HTML, iXBRL)", read_btn: "Read", drop_aria: "Upload a file",
     drop: "<b>Upload a document</b><br>Drop a PDF or HTML file here (statements, report, KID, in English or Italian) or <u>choose a file</u>",
     opt_lang: "Report language", settings: "Settings", back_search: "Back to search", theme: "Theme",
-    new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download report (PDF)",
+    new_analysis: "‹ New analysis", play: "Play", pause: "Pause", replay: "Replay", restart: "Restart", download: "Download ▾", dl_pdf: "Report (PDF)", dl_pptx: "Slides (PowerPoint)", dl_xlsx: "Figures (Excel)",
     ua_label: "Identity for SEC EDGAR (User-Agent)", ua_ph: "Jane Doe jane@example.com",
     ua_help: "The SEC asks whoever downloads filings for a name and a contact. It stays on this computer.",
     key_label: "API key", provider_label: "Provider", model_label: "Model (optional)", close: "Close", save_test: "Save and test",
@@ -48,7 +48,7 @@ const UI = {
     url_label: "Oppure incolla l'indirizzo di un documento (PDF, HTML, iXBRL)", read_btn: "Leggi", drop_aria: "Carica un file",
     drop: "<b>Carica un documento</b><br>Trascina qui un PDF o HTML (bilancio, report, KID, in italiano o in inglese) o <u>scegli un file</u>",
     opt_lang: "Lingua del report", settings: "Impostazioni", back_search: "Torna alla ricerca", theme: "Tema",
-    new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica report (PDF)",
+    new_analysis: "‹ Nuova analisi", play: "Avvia", pause: "Pausa", replay: "Rivedi", restart: "Ricomincia", download: "Scarica ▾", dl_pdf: "Report (PDF)", dl_pptx: "Slide (PowerPoint)", dl_xlsx: "Cifre (Excel)",
     ua_label: "Identificazione per SEC EDGAR (User-Agent)", ua_ph: "Nome Cognome nome@esempio.it",
     ua_help: "La SEC chiede a chi scarica i bilanci di indicare un nome e un contatto. Resta su questo computer.",
     key_label: "Chiave API", provider_label: "Fornitore", model_label: "Modello (facoltativo)", close: "Chiudi", save_test: "Salva e prova",
@@ -406,7 +406,18 @@ const easeOutBack = (t) => 1 + 2.9 * Math.pow(t - 1, 3) + 1.9 * Math.pow(t - 1, 
 $("#back").addEventListener("click", () => { state.director?.stop(); show("home"); loadRecent(); });
 $("#play").addEventListener("click", () => state.director?.toggle());
 $("#restart").addEventListener("click", () => state.director?.restart());
-$("#download").addEventListener("click", () => state.analysis && downloadReport(state.analysis));
+$("#download").addEventListener("click", (e) => { e.stopPropagation(); dlMenu(!!$("#dl-menu").hidden); });
+$("#dl-menu").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fmt]");
+  if (b && state.analysis) downloadReport(state.analysis, b.dataset.fmt);
+  dlMenu(false);
+});
+document.addEventListener("click", () => dlMenu(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") dlMenu(false); });
+function dlMenu(open) {
+  $("#dl-menu").hidden = !open;
+  $("#download").setAttribute("aria-expanded", String(open));
+}
 $("#lang2").addEventListener("change", async () => {
   const a = state.analysis, lang = $("#lang2").value;
   $("#opt-lang").value = lang;
@@ -1053,10 +1064,10 @@ function cardHTML(a, count) {
 
 // ------------------------------------------------------------------ downloadable report
 
-// a plain link to the server-made PDF: the browser downloads it as a normal file
-function downloadReport(a) {
+// a plain link to the server-made file (PDF report, PowerPoint deck, Excel figures): the browser downloads it as a normal file
+function downloadReport(a, fmt = "report.pdf") {
   const link = document.createElement("a");
-  link.href = `/api/doc/${a.id}/report.pdf?theme=${encodeURIComponent(themeId())}`;
+  link.href = `/api/doc/${a.id}/${fmt}?theme=${encodeURIComponent(themeId())}`;
   link.download = "";
   document.body.append(link); link.click(); link.remove();
 }

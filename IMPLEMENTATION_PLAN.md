@@ -1,0 +1,94 @@
+# Implementation plan
+
+Working notes to resume after a context reset. Read this first, then `PLAN.md` (design notes) and `README.md`.
+
+## Ground rules
+
+- Repo `alessiocriscio/spider-analyst`, branch `main`, push directly (no PRs unless asked). The user installs from the
+  zip into a folder named `spider-analyst-main`.
+- Commit author: `alessiocriscio <262817053+alessiocriscio@users.noreply.github.com>`; trailers
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_01SJf4EE1JxcFnmUfYg7YFZu`.
+  No model ids in commits or code.
+- Answer the user in Italian, concise, honest; cite sources.
+- Never commit the user's documents (the Anthropic S-1 lives only in the scratchpad).
+- Do not break what is verified: the S-1 acceptance test (`tests/test_tables.py`), real-document verification
+  (`verify.py`, below), 53+ offline tests.
+
+## Done (commits on main)
+
+| Commit | What |
+|---|---|
+| 31a566e | Livelier spider (gait, sway, grab pulse) |
+| 9ad73dd | AI required (Claude/ChatGPT subscriptions via CLI, API keys), `reader.py`, pre-IPO prospectuses |
+| 60f9f11 | Paged HTML (S-1), statement tables with periods, real checks, new PDF report, colour themes |
+| 769a3cc | Real filings: PDF statements (year order, quarter codes, note/% columns), ESEF layouts, banks/insurers, cash check, 400 MB, retries |
+
+## Now: from "reads a document" to "a deliverable for work"
+
+Status: `[ ]` todo, `[~]` in progress, `[x]` done.
+
+### 1. Export for presentations and models
+
+- [x] `analyst/pptx_report.py` — PowerPoint deck (16:9) built with python-pptx from the analysis dict:
+      title, headline figures (card), key findings, results vs comparative (native, editable bar chart), trend
+      over time, margins, balance sheet, cash flow, statement highlights table, what the AI understood, checks,
+      sources. Every slide carries its page references ("p. F-7") and the source. Theme colours from
+      `analyst/themes.py`. Market sheets: price line, calendar-year returns, return/risk table.
+- [x] `analyst/xlsx_export.py` — Excel workbook (XlsxWriter, already a python-pptx dependency): Summary, Statements
+      (current, comparative, change as a formula, page), Ratios, Checks, Figures (every figure read with period
+      and page), Prices for market sheets. Numbers are numbers (not text), with number formats; free cash flow as
+      a formula of the cells it comes from.
+- [x] `server.py`: `GET /api/doc/{id}/report.pptx?theme=` and `GET /api/doc/{id}/data.xlsx`.
+- [x] `web/`: download menu (PDF / PowerPoint / Excel) where the PDF button is now (browser check: with the e2e run in step 4).
+- [x] `requirements.txt`: python-pptx, XlsxWriter; reportlab range widened to the tested 5.x.
+- [x] Tests: deck and workbook for the S-1, an ESEF-like iXBRL fixture, a market sheet; open them back with
+      python-pptx / zip and check slides, charts, formulas, page tags; server routes.
+- [x] Render a deck with LibreOffice (`soffice --headless --convert-to pdf`) and look at the slides.
+
+Notes: deck 10–13 slides, native charts (values scaled to millions/billions, unit printed), source line with
+printed pages on every chart slide; workbook formulas carry cached results (LibreOffice recalculation with
+`$SC/lo_profile` gives the same numbers). Tests: `tests/test_exports.py`.
+
+### 2. Search coverage: pick the document, say what is covered
+
+- [ ] `sources.sec_documents(query)`: the company's recent filings to choose from — 10-K, 10-Q, 20-F, 40-F, 6-K,
+      S-1/F-1/424B, and 8-K with Item 2.02 (results), whose earnings release is exhibit 99.1 (resolved from the
+      filing index).
+- [ ] `sources.esef_documents(query)`: every year filings.xbrl.org has for the issuer, not only the latest.
+- [ ] `GET /api/documents?kind=sec|esef&query=` and analyse / download a chosen document (`url` restricted to
+      sec.gov and filings.xbrl.org).
+- [ ] UI: each search result gets a document picker (latest annual report preselected).
+- [ ] Coverage stated in the UI and README: covered (SEC filings, EU ESEF annual reports), not covered (Italian
+      half-year reports and non-ESEF documents, unlisted companies' filings at the business register, fund KIDs):
+      upload the PDF or paste its URL.
+- [ ] Tests with simulated EDGAR / filings.xbrl.org responses; live check on SEC (reachable from the dev session
+      since 2026-10-30).
+
+### 3. More real documents
+
+- [ ] More FinanceBench PDFs (other sectors: retail, pharma, telecom, industrials, media; 10-Q and 8-K releases).
+- [ ] More ESEF (Italian: Eni, Leonardo, Campari, Pirelli, Poste, Mediobanca, Unipol, Terna; others: SAP, Siemens,
+      TotalEnergies, ING, Nokia, Philips).
+- [ ] Live SEC: 10-K, 10-Q, 8-K exhibit 99.1, 20-F, S-1 of a few companies.
+- [ ] Every document also through the PPTX and XLSX exports. Fix what breaks; add a regression test per bug class.
+
+### 4. Faster spider (last, only if it does not touch the reading)
+
+- [ ] Shorter pauses and faster walking between figures in `web/app.js` pacing; same figures read and lit, same
+      order, same report. Verify with the browser test (`e2e/`) that every figure is still visited.
+
+### 5. Wrap-up
+
+- [ ] README / PLAN updated, tests green, commit and push, answer in Italian.
+
+## How to verify
+
+Scratchpad: `/tmp/claude-0/-home-user-spider-analyst/813b7837-9089-595e-b3bf-d58e614c7198/scratchpad` (`$SC`).
+
+- Tests: `.venv/bin/python -m pytest -q`
+- Real documents without AI: `cd $SC && SPIDER_DATA_DIR=$SC/esefcache .venv/bin/python -I verify.py en real esef s1`
+  (`real/` FinanceBench PDFs, `esef/` ESEF reports, `s1/` the user's S-1 — expected: S-1 revenue $16.3B +1,300%
+  vs H1 2025, 5/5 checks).
+- ESEF by name: `cd $SC && SPIDER_DATA_DIR=$SC/esefcache .venv/bin/python -I esefnames.py "air liquide" generali …`
+- FinanceBench list: `$SC/fb_list.txt`; blobless clone at `/home/user/patronus-ai/financebench` (outside the repo).
+- Network from the dev session: SEC and filings.xbrl.org reachable; company websites and borsaitaliana.it are not.

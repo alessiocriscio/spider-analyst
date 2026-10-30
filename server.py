@@ -18,7 +18,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from analyst import ai, pdfreport, pipeline, sources
+from analyst import ai, pdfreport, pipeline, pptx_report, sources, xlsx_export
 from analyst.i18n import system_lang, ui
 
 ROOT = Path(__file__).resolve().parent
@@ -233,17 +233,29 @@ def doc_img(aid: str, name: str):
     return FileResponse(p, media_type="image/jpeg" if name.endswith(".jpg") else "image/png")
 
 
-@app.get("/api/doc/{aid}/report.pdf")
-def report_pdf(aid: str, theme: str = "neon"):
-    """The report as a PDF in the app's style, drawn by the server (no browser involved)."""
+EXPORTS = {
+    "report.pdf": ("application/pdf", "report"),
+    "report.pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "slides"),
+    "data.xlsx": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "data"),
+}
+
+
+@app.get("/api/doc/{aid}/{what}")
+def export(aid: str, what: str, theme: str = "neon"):
+    """The report as a PDF or a PowerPoint deck in the app's style, or the figures as an Excel workbook (made by the server)."""
+    if what not in EXPORTS:
+        raise HTTPException(404, ui("formato non disponibile", "format not available"))
     a = pipeline.load(aid)
     if not a:
         raise HTTPException(404, ui("analisi non trovata", "analysis not found"))
     name = re.sub(r"[^\w-]+", "-", a.get("title") or "report").strip("-").lower()[:80] or "report"
     from analyst import themes
-    data = pdfreport.build(a, theme if theme in themes.THEMES else themes.DEFAULT)
-    return Response(data, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{name}-report-{a.get("lang", "en")}.pdf"',
+    theme = theme if theme in themes.THEMES else themes.DEFAULT
+    media, suffix = EXPORTS[what]
+    data = pdfreport.build(a, theme) if what == "report.pdf" else pptx_report.build(a, theme) if what == "report.pptx" else xlsx_export.build(a)
+    ext = what.rsplit(".", 1)[1]
+    return Response(data, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="{name}-{suffix}-{a.get("lang", "en")}.{ext}"',
                              "Cache-Control": "no-store"})
 
 
